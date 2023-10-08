@@ -1,0 +1,44 @@
+Failure # 1 (occurred at 2023-10-08_12-09-39)
+The actor died because of an error raised in its creation task, [36mray::PPO.__init__()[39m (pid=21591, ip=127.0.0.1, actor_id=0e26f1bb42d5c875664951a701000000, repr=PPO)
+  File "/Users/jakejones/.virtualenvs/pettingzoo/lib/python3.11/site-packages/ray/rllib/evaluation/worker_set.py", line 227, in _setup
+    self.add_workers(
+  File "/Users/jakejones/.virtualenvs/pettingzoo/lib/python3.11/site-packages/ray/rllib/evaluation/worker_set.py", line 593, in add_workers
+    raise result.get()
+  File "/Users/jakejones/.virtualenvs/pettingzoo/lib/python3.11/site-packages/ray/rllib/utils/actor_manager.py", line 481, in __fetch_result
+    result = ray.get(r)
+             ^^^^^^^^^^
+           ^^^^^^^^^^^^^^^^^^^
+           ^^^^^^^^^^^^^^^^^^^^^
+ray.exceptions.RayActorError: The actor died because of an error raised in its creation task, [36mray::RolloutWorker.__init__()[39m (pid=21595, ip=127.0.0.1, actor_id=1857cf40c570c5d91ee8ffa501000000, repr=<ray.rllib.evaluation.rollout_worker.RolloutWorker object at 0x10ad7e8d0>)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jakejones/.virtualenvs/pettingzoo/lib/python3.11/site-packages/ray/rllib/evaluation/rollout_worker.py", line 397, in __init__
+    self.env = env_creator(copy.deepcopy(self.env_context))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jakejones/Documents/repos/git/petting-zoo/Coup-Environment/coup-environment/ml.py", line 46, in <lambda>
+    register_env(env_name, lambda config: ParallelPettingZooEnv(env_creator(config)))
+                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jakejones/.virtualenvs/pettingzoo/lib/python3.11/site-packages/ray/rllib/env/wrappers/pettingzoo_env.py", line 200, in __init__
+    self.observation_space = self.par_env.observation_space(self.par_env.agents[0])
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jakejones/Documents/repos/git/petting-zoo/Coup-Environment/coup-environment/env/coup_env_parallel.py", line 85, in observation_space
+    return spaces.Tuple(
+           ^^^^^^^^^^^^^
+TypeError: Tuple.__init__() takes from 2 to 3 positional arguments but 11 were given
+
+During handling of the above exception, another exception occurred:
+
+[36mray::PPO.__init__()[39m (pid=21591, ip=127.0.0.1, actor_id=0e26f1bb42d5c875664951a701000000, repr=PPO)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jakejones/.virtualenvs/pettingzoo/lib/python3.11/site-packages/ray/rllib/algorithms/algorithm.py", line 517, in __init__
+    super().__init__(
+  File "/Users/jakejones/.virtualenvs/pettingzoo/lib/python3.11/site-packages/ray/tune/trainable/trainable.py", line 185, in __init__
+    self.setup(copy.deepcopy(self.config))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jakejones/.virtualenvs/pettingzoo/lib/python3.11/site-packages/ray/rllib/algorithms/algorithm.py", line 639, in setup
+    self.workers = WorkerSet(
+                   ^^^^^^^^^^
+  File "/Users/jakejones/.virtualenvs/pettingzoo/lib/python3.11/site-packages/ray/rllib/evaluation/worker_set.py", line 179, in __init__
+    raise e.args[0].args[2]
+TypeError: Tuple.__init__() takes from 2 to 3 positional arguments but 11 were given
