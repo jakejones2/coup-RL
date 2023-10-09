@@ -13,7 +13,7 @@ from pettingzoo.utils import parallel_to_aec, wrappers
 # need to ensure only one counteraction or block per move
 # deck needs not to be simply random
 # add mask to prevent illegal moves?
-# enforce discard after challenge
+# need to enforce waiting for exchange to complete...
 
 MOVES = [
     "INCOME",  # 0
@@ -34,7 +34,7 @@ MOVES = [
     "DISCARD_ASSASSIN",  # 15
     "None",  # 16
 ]
-NUM_ITERS = 100
+
 CARDS = [
     "DUKE",  # 0
     "ASSASSIN",  # 1
@@ -43,6 +43,8 @@ CARDS = [
     "CONTESSA",  # 4
     "None",  # 5
 ]
+
+NUM_ITERS = 100
 
 
 def genCard():
@@ -79,7 +81,7 @@ class parallel_env(ParallelEnv):
             zip(self.possible_agents, list(range(len(self.possible_agents))))
         )
         self.render_mode = render_mode
-        self.rewards_log = {}
+        self.rewards = {}
         self.observation_spaces = {
             agent: spaces.Tuple(
                 (
@@ -108,41 +110,51 @@ class parallel_env(ParallelEnv):
         return self.action_spaces[agent]
 
     def render(self):
-        if self.render_mode is None:
-            gymnasium.logger.warn(
-                "You are calling render method without specifying any render mode."
-            )
-            return
+        agent = self.state["player_0"]["TURN"]
+        opponent = "player_1" if agent == "player_0" else "player_0"
+        agent_moves = self.state[agent]["MOVES"]
+        opponent_moves = self.state[opponent]["MOVES"]
+        last_move = agent_moves[-1]
+        last_counter = opponent_moves[-1]
 
-        if len(self.agents) == 2:
-            turn = self.state["player_0"]["TURN"]
-            string = "{}: {}, coins {}, cards {}".format(
-                turn,
-                MOVES[self.state[turn]["MOVES"][-1]],
-                self.state[turn]["COINS"],
-                self.state[turn]["CARDS"],
+        # check for failed challenge resulting in automatic coup
+        if agent_moves[-1] == 2 and (agent_moves[-2] == 10 or opponent_moves[-1] == 10):
+            last_move = agent_moves[-2]
+
+        if opponent_moves[-1] == 2 and (
+            agent_moves[-2] == 10 or opponent_moves[-1] == 10
+        ):
+            last_counter = opponent_moves[-2]
+
+        # render the player who's turn it is (agent)
+        string = "{}: {}, coins {}, cards {}".format(
+            agent,
+            MOVES[last_move],
+            self.state[agent]["COINS"],
+            self.state[agent]["CARDS"],
+        )
+
+        # render any counteractions (opponent)
+        if self.render_mode == "all" or last_counter in [
+            7,
+            8,
+            9,
+            10,
+        ]:
+            string += "\ncounter from {}: {}, coins {}, cards {}".format(
+                opponent,
+                MOVES[last_counter],
+                self.state[opponent]["COINS"],
+                self.state[opponent]["CARDS"],
             )
-            # render any counteractions
-            counter = self.agents[self.agents.index(self.state["player_0"]["TURN"]) - 1]
-            if self.state[counter]["MOVES"][-1] in [7, 8, 9, 10]:
-                string += "\ncounter from {}: {}, coins {}, cards {}".format(
-                    counter,
-                    MOVES[self.state[counter]["MOVES"][-1]],
-                    self.state[counter]["COINS"],
-                    self.state[counter]["CARDS"],
-                )
-            string += "\n    >  " + str(self.rewards_log)
-        else:
-            string = "Game over"
+            if self.render_mode == "all":
+                string += "\n    >  " + str(self.rewards)
         print(string)
-
-    # come back to this after reset
-    # def observe(self, agent):
-    #     return np.array(self.observations[agent])
 
     def reset(self, seed=None, options=None):
         self.agents = self.possible_agents
         self.num_moves = 0
+        self.rewards = {}
         self.state = {
             agent: {
                 "COINS": 0,
@@ -170,150 +182,223 @@ class parallel_env(ParallelEnv):
         infos = {agent: {} for agent in self.agents}
         return observations, infos
 
-    def step(self, actions):
-        def checkCard(card, agent, opponent, reward=5):
-            has_card = card in self.state[opponent]["CARDS"]
-            if has_card:
-                rewards[opponent] = reward
-                rewards[agent] = -reward
+    def has_card(self, card, player):
+        """
+        Returns true if player holds card, else false
+        """
+        return card in self.state[player]["CARDS"]
+
+    def resolve_challenge(
+        self,
+        card,
+        agent,
+        opponent,
+    ):
+        """
+        Reward players if they pass/fail challenge
+        """
+        if self.has_card(card, opponent):
+            if card == "ASSASSIN":
+                self.state[agent]["CARDS"] = ["None", "None", "None", "None"]
             else:
-                rewards[opponent] = -reward
-                rewards[agent] = reward
-            return has_card
+                self.rewards[opponent] = 5
+                self.rewards[agent] = -5
+                self.state[opponent]["MOVES"].append(2)
+        else:
+            self.rewards[opponent] = -5
+            self.rewards[agent] = 5
+            self.state[agent]["MOVES"].append(2)
 
-        # def failedChallenge(agent, opponent):
-        #     moves = self.state[opponent]["MOVES"].copy().reverse()
-        #     for move in moves:
-        #         if move < 7:
-        #             return move
+    def remove_card(self, card, agent):
+        """
+        If agent doesn't hold card, punish 10.
+        If agent holds card, remove card from state.
+        """
+        if not card in self.state[agent]["CARDS"]:
+            self.rewards[agent] -= 10
+            return
+        self.state[agent]["CARDS"][self.state[agent]["CARDS"].index(card)] = "None"
 
-        def removeCard(card, agent):
-            """
-            If agent doesn't hold card, punish 10.
-            If agent holds card, remove card from state.
-            """
-            if not card in self.state[agent]["CARDS"]:
-                rewards[agent] -= 10
-                return
-            self.state[agent]["CARDS"][self.state[agent]["CARDS"].index(card)] = "None"
+    def last_turn(self, player):
+        """
+        Return a player's last turn-based move, discounting counters, discards, challenges and None.
+        If no moves, return None.
+        """
+        moves = self.state[player]["MOVES"].copy().reverse()
+        if not moves:
+            return 16
+        for move in moves:
+            if move < 7:
+                return move
+        return 16
 
-        def lastTurn(player):
-            """
-            Return a player's last move, discounting counters, discards and challenges.
-            """
-            moves = self.state[player]["MOVES"].copy().reverse()
-            if not moves:
-                return 16
-            for move in moves:
-                if move < 7:
-                    return move
+    def last_move(self, player):
+        """
+        Return a player's last action, discounting None.
+        If no moves, return None.
+        """
+        moves = self.state[player]["MOVES"].copy().reverse()
+        if not moves:
+            return 16
+        for move in moves:
+            if move != 16:
+                return move
+        return 16
 
-        rewards = {}
-        for i in self.agents:
-            rewards[i] = 0
+    def number_of_cards(self, player):
+        """
+        Returns the number of cards a player has discounting None.
+        """
+        cards = self.state[player]["CARDS"]
+        count = 0
+        for card in cards:
+            if card != "None":
+                count += 1
+        return count
+
+    def step(self, actions):
+        self.rewards = {}
         observations = {}
         infos = {}
 
-        # If a user passes in actions with no agents, then just return empty observations, etc.
-        if not actions:
-            self.agents = []
-            return {}, {}, {}, {}, {}
+        for i in self.agents:
+            self.rewards[i] = 0
 
         for agent, action in actions.items():
-            # handle turn-based actions
-            if agent != self.state[agent]["TURN"] and action < 7:
-                rewards[agent] -= 10
-                continue
-
-            self.state[agent]["MOVES"].append(action)
             opponent = "player_0" if agent == "player_1" else "player_1"
+
+            # punish incorrect turns
+            if agent != self.state[agent]["TURN"] and action < 7:
+                self.rewards[agent] -= 10
+                continue
 
             # punish lack of discard if applicable
             if (
-                len(self.state[agent]["CARDS"]) > 2 or lastTurn(opponent) in [2, 4]
-            ) and (action < 11 and action != 9):
-                rewards[agent] -= 10
+                (
+                    self.number_of_cards(agent) > 2 or self.last_turn(agent) == 5
+                )  # if exchanged
+                and action < 11
+            ) or (
+                self.last_turn(opponent) in [2, 4] and action < 9
+            ):  # or assassinated/couped
+                self.rewards[agent] -= 10
+                continue
+
+            # punish lack of wait for discard by opponent
+            if (
+                (
+                    self.last_turn(agent) in [2, 4]
+                    and self.state[opponent]["MOVES"][-1] < 9
+                )  # if assassinating/launching coup
+                or self.number_of_cards(opponent) > 2
+                or self.last_turn(opponent) == 5
+                # or opponent exchanging
+            ) and action != 16:
+                self.rewards[agent] -= 10
+                continue
+
+            self.state[agent]["MOVES"].append(action)
 
             match action:
                 case 0:  # INCOME
                     self.state[agent]["COINS"] += 1
-                    rewards[agent] += 1
+                    self.rewards[agent] += 1
                 case 1:  # FOREIGN AID
                     self.state[agent]["COINS"] += 2
-                    rewards[agent] += 2
+                    self.rewards[agent] += 2
                 case 2:  # COUP
                     if self.state[agent]["COINS"] >= 7:
                         self.state[agent]["COINS"] -= 7
-                        rewards[agent] += 5
-                        rewards[opponent] -= 5
+                        self.rewards[agent] += 5
+                        self.rewards[opponent] -= 5
+                    else:
+                        self.rewards[agent] -= 10
                 case 3:  # TAX
                     self.state[agent]["COINS"] += 3
-                    rewards[agent] += 3
+                    self.rewards[agent] += 3
                 case 4:  # ASSASSINATE
                     if self.state[agent]["COINS"] >= 3:
                         self.state[agent]["COINS"] -= 3
-                        rewards[agent] -= 5
-                        rewards[opponent] -= 5
+                        self.rewards[agent] -= 5
+                        self.rewards[opponent] -= 5
                 case 5:  # EXCHANGE
                     try:
                         cards = self.state[agent]["CARDS"]
                         self.state[agent]["CARDS"][cards.index("None")] = genCard()
-                        self.state[agent]["CARDS"][cards.index("None")] = genCard()
+                        if self.number_of_cards(agent) > 2:
+                            self.state[agent]["CARDS"][cards.index("None")] = genCard()
                     except ValueError:
-                        rewards[agent] -= 3
+                        self.rewards[agent] -= 3
                 case 6:  # STEAL
-                    self.state[agent]["COINS"] += 2
-                    self.state[opponent]["COINS"] -= 2
-                    rewards[agent] += 2
-                    rewards[opponent] -= 2
+                    if self.state[opponent]["COINS"] >= 2:
+                        self.state[agent]["COINS"] += 2
+                        self.state[opponent]["COINS"] -= 2
+                        self.rewards[agent] += 2
+                        self.rewards[opponent] -= 2
+                    elif self.state[opponent]["COINS"] == 1:
+                        self.state[agent]["COINS"] += 1
+                        self.state[opponent]["COINS"] -= 1
+                        self.rewards[agent] += 1
+                        self.rewards[opponent] -= 1
                 case 7:  # BLOCK FOREIGN AID
-                    if lastTurn(opponent) != 1:
-                        rewards[agent] -= 10
+                    if self.last_turn(opponent) != 1:
+                        self.rewards[agent] -= 10
                     else:
                         self.state[opponent]["COINS"] -= 2
-                        rewards[opponent] -= 2
-                        rewards[agent] += 2
+                        self.rewards[opponent] -= 2
+                        self.rewards[agent] += 2
                 case 8:  # BLOCK STEALING
-                    if lastTurn(opponent) != 6:
-                        rewards[agent] -= 10
+                    if self.last_turn(opponent) != 6:
+                        self.rewards[agent] -= 10
                     else:
                         self.state[opponent]["COINS"] -= 2
                         self.state[agent]["COINS"] += 2
-                        rewards[opponent] -= -2
-                        rewards[agent] += 2
+                        self.rewards[opponent] -= -2
+                        self.rewards[agent] += 2
                 case 9:  # BLOCK ASSASSINATION
-                    if lastTurn(opponent) != 4:
-                        rewards[agent] -= 10
+                    if self.last_turn(opponent) != 4:
+                        self.rewards[agent] -= 10
                     else:
-                        rewards[opponent] -= 5
-                        rewards[agent] += 5
+                        self.rewards[opponent] -= 5
+                        self.rewards[agent] += 5
                 case 10:  # CHALLENGE
                     last_move = self.state[opponent]["MOVES"][-1]
                     if last_move in [3, 7]:
-                        checkCard("DUKE", agent, opponent)
+                        self.resolve_challenge("DUKE", agent, opponent)
                     elif last_move == 4:
-                        checkCard("ASSASSIN", agent, opponent)
+                        self.resolve_challenge("ASSASSIN", agent, opponent)
                     elif last_move == 5:
-                        checkCard("AMBASSADOR", agent, opponent)
+                        self.resolve_challenge("AMBASSADOR", agent, opponent)
                     elif last_move == 6:
-                        checkCard("CAPTAIN", agent, opponent)
+                        self.resolve_challenge("CAPTAIN", agent, opponent)
                     elif last_move == 8:
-                        if checkCard("CAPTAIN", agent, opponent, reward=0):
-                            checkCard("CAPTAIN", agent, opponent)
-                        if checkCard("AMBASSADOR", agent, opponent, reward=0):
-                            checkCard("AMBASSADOR", agent, opponent)
+                        if self.has_card("CAPTAIN", opponent):
+                            self.resolve_challenge("CAPTAIN", agent, opponent)
+                        else:
+                            self.resolve_challenge("AMBASSADOR", agent, opponent)
                     elif last_move == 9:
-                        checkCard("CONTESSA", agent, opponent)
+                        self.resolve_challenge("CONTESSA", agent, opponent)
+                    else:
+                        self.rewards[agent] = -10
                 case 11:  # DISCARD DUKE
-                    removeCard("DUKE", agent)
+                    self.remove_card("DUKE", agent)
                 case 12:  # DISCARD CONTESSA
-                    removeCard("CONTESSA", agent)
+                    self.remove_card("CONTESSA", agent)
                 case 13:  # DISCARD CAPTAIN
-                    removeCard("CAPTAIN", agent)
+                    self.remove_card("CAPTAIN", agent)
                 case 14:  # DISCARD AMBASSADOR
-                    removeCard("AMBASSADOR", agent)
+                    self.remove_card("AMBASSADOR", agent)
                 case 15:  # DISCARD ASSASSIN
-                    removeCard("ASSASSIN", agent)
+                    self.remove_card("ASSASSIN", agent)
+                case 16:  # None
+                    pass
+
+            # ensure coins remain positive
+            if self.state[agent]["COINS"] < 0:
+                self.state[agent]["COINS"] = 0
+
+            if self.state[opponent]["COINS"] < 0:
+                self.state[opponent]["COINS"] = 0
 
             observations[agent] = (
                 1 if self.state[agent]["TURN"] == agent else 0,
@@ -334,7 +419,7 @@ class parallel_env(ParallelEnv):
         env_truncation = self.num_moves >= NUM_ITERS
 
         terminations = {
-            agent: len(self.state[agent]["CARDS"]) == 0 for agent in self.agents
+            agent: self.number_of_cards(agent) == 0 for agent in self.agents
         }
         truncations = {agent: env_truncation for agent in self.agents}
 
@@ -342,9 +427,7 @@ class parallel_env(ParallelEnv):
             [item for item in terminations.items() if item[1] == True]
         )
 
-        self.rewards_log = rewards
-
-        if self.render_mode == "human":
+        if self.render_mode in ["human", "all"]:
             self.render()
 
         turn = self.state[self.agents[0]]["TURN"]
@@ -358,6 +441,7 @@ class parallel_env(ParallelEnv):
             self.state[i]["TURN"] = next_turn
 
         if env_truncation or env_termination:
+            print("Game Over")
             self.agents = []
 
-        return observations, rewards, terminations, truncations, infos
+        return observations, self.rewards, terminations, truncations, infos
