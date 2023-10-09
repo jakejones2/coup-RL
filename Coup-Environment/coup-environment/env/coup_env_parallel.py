@@ -13,7 +13,6 @@ from pettingzoo.utils import parallel_to_aec, wrappers
 # need to ensure only one counteraction or block per move
 # deck needs not to be simply random
 # add mask to prevent illegal moves?
-# need to enforce waiting for exchange to complete...
 
 MOVES = [
     "INCOME",  # 0
@@ -100,6 +99,7 @@ class parallel_env(ParallelEnv):
             for agent in self.possible_agents
         }
         self.action_spaces = {agent: Discrete(16) for agent in self.possible_agents}
+        self.reward_debug = []
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
@@ -110,7 +110,7 @@ class parallel_env(ParallelEnv):
         return self.action_spaces[agent]
 
     def render(self):
-        agent = self.state["player_0"]["TURN"]
+        agent = self.agents[self.state["player_0"]["TURN"]]
         opponent = "player_1" if agent == "player_0" else "player_0"
         agent_moves = self.state[agent]["MOVES"]
         opponent_moves = self.state[opponent]["MOVES"]
@@ -148,7 +148,8 @@ class parallel_env(ParallelEnv):
                 self.state[opponent]["CARDS"],
             )
             if self.render_mode == "all":
-                string += "\n    >  " + str(self.rewards)
+                string += "\n    " + str(self.rewards)
+                string += "\n    " + str(self.reward_debug)
         print(string)
 
     def reset(self, seed=None, options=None):
@@ -160,13 +161,13 @@ class parallel_env(ParallelEnv):
                 "COINS": 0,
                 "MOVES": [16, 16, 16],
                 "CARDS": [genCard(), genCard(), "None", "None"],
-                "TURN": "player_0",
+                "TURN": 0,
             }
             for agent in self.agents
         }
         observations = {
             agent: (
-                1 if self.state[agent]["TURN"] == agent else 0,
+                0,
                 0,
                 0,
                 CARDS.index(self.state[agent]["CARDS"][0]),
@@ -260,6 +261,8 @@ class parallel_env(ParallelEnv):
         self.rewards = {}
         observations = {}
         infos = {}
+        change_turn = False
+        self.reward_debug = []
 
         for i in self.agents:
             self.rewards[i] = 0
@@ -268,8 +271,9 @@ class parallel_env(ParallelEnv):
             opponent = "player_0" if agent == "player_1" else "player_1"
 
             # punish incorrect turns
-            if agent != self.state[agent]["TURN"] and action < 7:
+            if (self.agents.index(agent) != self.state[agent]["TURN"]) and action < 7:
                 self.rewards[agent] -= 10
+                self.reward_debug.append(f"punish {agent} wrong turn")
                 continue
 
             # punish lack of discard if applicable
@@ -281,6 +285,7 @@ class parallel_env(ParallelEnv):
             ) or (
                 self.last_turn(opponent) in [2, 4] and action < 9
             ):  # or assassinated/couped
+                self.reward_debug.append(f"punish {agent} lack of discard")
                 self.rewards[agent] -= 10
                 continue
 
@@ -294,33 +299,44 @@ class parallel_env(ParallelEnv):
                 or self.last_turn(opponent) == 5
                 # or opponent exchanging
             ) and action != 16:
+                self.reward_debug.append(f"punish {agent} lack of wait for discard")
                 self.rewards[agent] -= 10
                 continue
 
             self.state[agent]["MOVES"].append(action)
+            if action < 7:
+                change_turn = True
 
             match action:
                 case 0:  # INCOME
                     self.state[agent]["COINS"] += 1
                     self.rewards[agent] += 1
+                    self.reward_debug.append(f"reward {agent} income")
                 case 1:  # FOREIGN AID
                     self.state[agent]["COINS"] += 2
                     self.rewards[agent] += 2
+                    self.reward_debug.append(f"reward {agent} FE")
                 case 2:  # COUP
                     if self.state[agent]["COINS"] >= 7:
                         self.state[agent]["COINS"] -= 7
                         self.rewards[agent] += 5
                         self.rewards[opponent] -= 5
+                        self.reward_debug.append(f"punish {opponent} coup")
+                        self.reward_debug.append(f"reward {agent} coup")
                     else:
                         self.rewards[agent] -= 10
+                        self.reward_debug.append(f"punish {agent} invalid coup")
                 case 3:  # TAX
                     self.state[agent]["COINS"] += 3
                     self.rewards[agent] += 3
+                    self.reward_debug.append(f"reward {agent} tax")
                 case 4:  # ASSASSINATE
                     if self.state[agent]["COINS"] >= 3:
                         self.state[agent]["COINS"] -= 3
                         self.rewards[agent] -= 5
                         self.rewards[opponent] -= 5
+                    else:
+                        self.state[agent]["MOVES"][-1] = 16
                 case 5:  # EXCHANGE
                     try:
                         cards = self.state[agent]["CARDS"]
@@ -396,12 +412,21 @@ class parallel_env(ParallelEnv):
             # ensure coins remain positive
             if self.state[agent]["COINS"] < 0:
                 self.state[agent]["COINS"] = 0
-
             if self.state[opponent]["COINS"] < 0:
                 self.state[opponent]["COINS"] = 0
 
+        if self.render_mode in ["human", "all"]:
+            self.render()
+
+        turn = self.state[agent]["TURN"]
+        next_turn = (turn + 1) % 2  # for two players
+
+        for agent in self.agents:
+            if change_turn:
+                self.state[agent]["TURN"] = next_turn
+            opponent = "player_0" if agent == "player_1" else "player_1"
             observations[agent] = (
-                1 if self.state[agent]["TURN"] == agent else 0,
+                next_turn,
                 self.state[agent]["COINS"],
                 self.state[opponent]["COINS"],
                 CARDS.index(self.state[agent]["CARDS"][0]),
@@ -412,7 +437,6 @@ class parallel_env(ParallelEnv):
                 self.state[opponent]["MOVES"][-2],
                 self.state[opponent]["MOVES"][-3],
             )
-
             infos[agent] = {}
 
         self.num_moves += 1
@@ -426,19 +450,6 @@ class parallel_env(ParallelEnv):
         env_termination = len(
             [item for item in terminations.items() if item[1] == True]
         )
-
-        if self.render_mode in ["human", "all"]:
-            self.render()
-
-        turn = self.state[self.agents[0]]["TURN"]
-        next_turn = ""
-        if turn == "player_0":
-            next_turn = "player_1"
-        else:
-            next_turn = "player_0"
-
-        for i in self.state:
-            self.state[i]["TURN"] = next_turn
 
         if env_truncation or env_termination:
             print("Game Over")

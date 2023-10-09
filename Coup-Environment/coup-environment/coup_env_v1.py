@@ -1,6 +1,6 @@
 from env import coup_env_parallel
 
-env = coup_env_parallel.parallel_env(render_mode="human")
+env = coup_env_parallel.parallel_env(render_mode="all")
 observations, infos = env.reset()
 
 while env.agents:
