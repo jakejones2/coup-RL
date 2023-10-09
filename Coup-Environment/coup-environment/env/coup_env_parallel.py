@@ -80,27 +80,32 @@ class parallel_env(ParallelEnv):
         )
         self.render_mode = render_mode
         self.rewards_log = {}
+        self.observation_spaces = {
+            agent: spaces.Tuple(
+                (
+                    Discrete(2),  # turn
+                    Discrete(100),  # player coins
+                    Discrete(100),  # opponent coins
+                    Discrete(6),  # card 1
+                    Discrete(6),  # card 2
+                    Discrete(6),  # card 3
+                    Discrete(6),  # card 4
+                    Discrete(17),  # opponent last move
+                    Discrete(17),  # opponent second last move
+                    Discrete(17),  # opponent third last move
+                )
+            )
+            for agent in self.possible_agents
+        }
+        self.action_spaces = {agent: Discrete(16) for agent in self.possible_agents}
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
-        return spaces.Tuple(
-            (
-                Discrete(2),  # turn
-                Discrete(100),  # player coins
-                Discrete(100),  # opponent coins
-                Discrete(6),  # card 1
-                Discrete(6),  # card 2
-                Discrete(6),  # card 3
-                Discrete(6),  # card 4
-                Discrete(16),  # opponent last move
-                Discrete(16),  # opponent second last move
-                Discrete(16),  # opponent third last move
-            )
-        )
+        return self.observation_spaces[agent]
 
     @functools.lru_cache(maxsize=None)
     def action_space(self, agent):
-        return Discrete(16)
+        return self.action_spaces[agent]
 
     def render(self):
         if self.render_mode is None:
@@ -132,17 +137,13 @@ class parallel_env(ParallelEnv):
         print(string)
 
     # come back to this after reset
-    def observe(self, agent):
-        return np.array(self.observations[agent])
+    # def observe(self, agent):
+    #     return np.array(self.observations[agent])
 
     def reset(self, seed=None, options=None):
-        # self.rewards = {agent: 0 for agent in self.agents}
-        # self._cumulative_rewards = {agent: 0 for agent in self.agents}
-        # self.terminations = {agent: False for agent in self.agents}
-        # self.truncations = {agent: False for agent in self.agents}
-        self.agents = self.possible_agents[:]
+        self.agents = self.possible_agents
         self.num_moves = 0
-        observations = {
+        self.state = {
             agent: {
                 "COINS": 0,
                 "MOVES": [16, 16, 16],
@@ -151,8 +152,22 @@ class parallel_env(ParallelEnv):
             }
             for agent in self.agents
         }
+        observations = {
+            agent: (
+                1 if self.state[agent]["TURN"] == agent else 0,
+                0,
+                0,
+                CARDS.index(self.state[agent]["CARDS"][0]),
+                CARDS.index(self.state[agent]["CARDS"][1]),
+                5,
+                5,
+                16,
+                16,
+                16,
+            )
+            for agent in self.agents
+        }
         infos = {agent: {} for agent in self.agents}
-        self.state = observations
         return observations, infos
 
     def step(self, actions):
@@ -197,6 +212,7 @@ class parallel_env(ParallelEnv):
         for i in self.agents:
             rewards[i] = 0
         observations = {}
+        infos = {}
 
         # If a user passes in actions with no agents, then just return empty observations, etc.
         if not actions:
@@ -299,20 +315,20 @@ class parallel_env(ParallelEnv):
                 case 15:  # DISCARD ASSASSIN
                     removeCard("ASSASSIN", agent)
 
-            observations[agent] = np.array(
-                [
-                    1 if self.state[agent]["TURN"] == agent else 0,
-                    self.state[agent]["COINS"],
-                    self.state[opponent]["COINS"],
-                    CARDS.index(self.state[agent]["CARDS"][0]),
-                    CARDS.index(self.state[agent]["CARDS"][1]),
-                    CARDS.index(self.state[agent]["CARDS"][2]),
-                    CARDS.index(self.state[agent]["CARDS"][3]),
-                    self.state[opponent]["MOVES"][-1],
-                    self.state[opponent]["MOVES"][-2],
-                    self.state[opponent]["MOVES"][-3],
-                ]
+            observations[agent] = (
+                1 if self.state[agent]["TURN"] == agent else 0,
+                self.state[agent]["COINS"],
+                self.state[opponent]["COINS"],
+                CARDS.index(self.state[agent]["CARDS"][0]),
+                CARDS.index(self.state[agent]["CARDS"][1]),
+                CARDS.index(self.state[agent]["CARDS"][2]),
+                CARDS.index(self.state[agent]["CARDS"][3]),
+                self.state[opponent]["MOVES"][-1],
+                self.state[opponent]["MOVES"][-2],
+                self.state[opponent]["MOVES"][-3],
             )
+
+            infos[agent] = {}
 
         self.num_moves += 1
         env_truncation = self.num_moves >= NUM_ITERS
@@ -340,8 +356,6 @@ class parallel_env(ParallelEnv):
 
         for i in self.state:
             self.state[i]["TURN"] = next_turn
-
-        infos = {agent: {} for agent in self.agents}
 
         if env_truncation or env_termination:
             self.agents = []

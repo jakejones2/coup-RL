@@ -7,6 +7,7 @@ from ray.tune.registry import register_env
 from ray.rllib.models import ModelCatalog
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray import tune
+from ray.rllib.utils import check_env
 
 from keras.layers import Dense
 from keras.models import Sequential
@@ -35,6 +36,7 @@ class Model1(TFModelV2):
 def env_creator(args):
     env = coup_env_parallel.parallel_env(render_mode="human")
     # some super suit functions went here, normalising observations and stacking frames
+    # check_env(env)
     return env
 
 
@@ -48,8 +50,8 @@ if __name__ == "__main__":
 
 config = (
     PPOConfig()
-    .environment(env=env_name, clip_actions=True)
-    .rollouts(num_rollout_workers=4, rollout_fragment_length=128)
+    .environment(env=env_name, clip_actions=True, disable_env_checking=True)
+    .rollouts(num_rollout_workers=1, rollout_fragment_length=128)  # workers = 4
     .training(
         train_batch_size=512,
         lr=2e-5,
