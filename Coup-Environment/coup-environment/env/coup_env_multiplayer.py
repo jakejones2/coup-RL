@@ -13,25 +13,35 @@ from pettingzoo.utils import parallel_to_aec, wrappers
 # need to ensure only one counteraction or block per move
 # deck needs not to be simply random
 # add mask to prevent illegal moves?
+# reward game win
 
 MOVES = [
     "INCOME",  # 0
     "FOREIGN AID",  # 1
-    "COUP",  # 2
-    "TAX",  # 3
-    "ASSASSINATE",  # 4
-    "EXCHANGE",  # 5
-    "STEAL",  # 6
-    "BLOCK_FOREIGN_AID",  # 7
-    "BLOCK_STEALING",  # 8
-    "BLOCK_ASSASSINATION",  # 9
-    "CHALLENGE",  # 10
-    "DISCARD_DUKE",  # 11
-    "DISCARD_CONTESSA",  # 12
-    "DISCARD_CAPTAIN",  # 13
-    "DISCARD_AMBASSADOR",  # 14
-    "DISCARD_ASSASSIN",  # 15
-    "None",  # 16
+    "COUP0",  # 2
+    "COUP1",  # 3
+    "COUP2",  # 4
+    "COUP3",  # 5
+    "TAX",  # 6
+    "ASSASSINATE0",  # 7
+    "ASSASSINATE1",  # 8
+    "ASSASSINATE2",  # 9
+    "ASSASSINATE3",  # 10
+    "EXCHANGE",  # 11
+    "STEAL0",  # 12
+    "STEAL1",  # 13
+    "STEAL2",  # 14
+    "STEAL3",  # 15
+    "BLOCK_FOREIGN_AID",  # 16
+    "BLOCK_STEALING",  # 17
+    "BLOCK_ASSASSINATION",  # 18
+    "CHALLENGE",  # 19
+    "DISCARD_DUKE",  # 20
+    "DISCARD_CONTESSA",  # 21
+    "DISCARD_CAPTAIN",  # 22
+    "DISCARD_AMBASSADOR",  # 23
+    "DISCARD_ASSASSIN",  # 24
+    "None",  # 25
 ]
 
 CARDS = [
@@ -43,11 +53,29 @@ CARDS = [
     "None",  # 5
 ]
 
+DECK = ["ASSASSIN", "AMBASSADOR", "DUKE", "CONTESSA", "CAPTAIN"] * 3
+random.shuffle(DECK)
+
 NUM_ITERS = 100
+
+TURNS = [
+    "player_0",
+    "counter_player_0",
+    "challenge_player_0",
+    "player_1",
+    "counter_player_1",
+    "challenge_player_1",
+    "player_2",
+    "counter_player_2",
+    "challenge_player_2",
+    "player_3",
+    "counter_player_3",
+    "challenge_player_3",
+]
 
 
 def genCard():
-    return CARDS[random.randint(0, 4)]
+    return DECK.pop()
 
 
 def env(render_mode=None):
@@ -74,8 +102,8 @@ class parallel_env(ParallelEnv):
     metadata = {"render_modes": ["human"], "name": "coup_v0"}
 
     def __init__(self, render_mode=None):
-        self.possible_agents = ["player_" + str(r) for r in range(2)]
-        self._agent_ids = {"player_0", "player_1"}
+        self.possible_agents = ["player_" + str(r) for r in range(4)]
+        self._agent_ids = {"player_0", "player_1", "player_2", "player_3"}
         self.agent_name_mapping = dict(
             zip(self.possible_agents, list(range(len(self.possible_agents))))
         )
@@ -85,20 +113,33 @@ class parallel_env(ParallelEnv):
             agent: spaces.Tuple(
                 (
                     Discrete(2),  # turn
-                    Discrete(100),  # player coins
-                    Discrete(100),  # opponent coins
+                    Discrete(100),  # player0 coins
+                    Discrete(100),  # player1 coins
+                    Discrete(100),  # player2 coins
+                    Discrete(100),  # player3 coins
                     Discrete(6),  # card 1
                     Discrete(6),  # card 2
                     Discrete(6),  # card 3
                     Discrete(6),  # card 4
-                    Discrete(17),  # opponent last move
-                    Discrete(17),  # opponent second last move
-                    Discrete(17),  # opponent third last move
+                    Discrete(26),  # player0 last move
+                    Discrete(26),  # player0 second last move
+                    Discrete(26),  # player0 third last move
+                    Discrete(26),  # player1 last move
+                    Discrete(26),  # player1 second last move
+                    Discrete(26),  # player1 third last move
+                    Discrete(26),  # player2 last move
+                    Discrete(26),  # player2 second last move
+                    Discrete(26),  # player2 third last move
+                    Discrete(26),  # player3 last move
+                    Discrete(26),  # player3 second last move
+                    Discrete(26),  # player3 third last move
                 )
             )
             for agent in self.possible_agents
         }
-        self.action_spaces = {agent: Discrete(16) for agent in self.possible_agents}
+        self.action_spaces = {agent: Discrete(26) for agent in self.possible_agents}
+
+        # FIX
         self.reward_debug = []
         self.sudo_moves = {agent: [] for agent in self.possible_agents}
 
@@ -110,6 +151,7 @@ class parallel_env(ParallelEnv):
     def action_space(self, agent):
         return self.action_spaces[agent]
 
+    # FIX
     def render(self):
         agent = self.agents[self.state["player_0"]["TURN"]]
         opponent = "player_1" if agent == "player_0" else "player_0"
@@ -169,16 +211,27 @@ class parallel_env(ParallelEnv):
         }
         observations = {
             agent: (
-                0,
-                0,
-                0,
-                CARDS.index(self.state[agent]["CARDS"][0]),
-                CARDS.index(self.state[agent]["CARDS"][1]),
-                5,
-                5,
-                16,
-                16,
-                16,
+                0,  # turn
+                0,  # player0 coins
+                0,  # player1 coins
+                0,  # player2 coins
+                0,  # player3 coins
+                CARDS.index(self.state[agent]["CARDS"][0]),  # card 1
+                CARDS.index(self.state[agent]["CARDS"][1]),  # card 2
+                5,  # card 3
+                5,  # card 4
+                16,  # player0 last move
+                16,  # player0 second last move
+                16,  # player0 third last move
+                16,  # player1 last move
+                16,  # player1 second last move
+                16,  # player1 third last move
+                16,  # player2 last move
+                16,  # player2 second last move
+                16,  # player2 third last move
+                16,  # player3 last move
+                16,  # player3 second last move
+                16,  # player3 third last move
             )
             for agent in self.agents
         }
@@ -208,13 +261,13 @@ class parallel_env(ParallelEnv):
                 self.rewards[agent] = -5
                 self.reward_debug.append(f"reward {opponent} win challenge")
                 self.reward_debug.append(f"punish {agent} lose challenge")
-                self.sudo_moves[opponent].append(2)
+                self.sudo_moves[agent].append(2 + int(agent[-1]))
         else:
             self.rewards[opponent] = -5
             self.rewards[agent] = 5
             self.reward_debug.append(f"reward {agent} win challenge")
             self.reward_debug.append(f"punish {opponent} lose challenge")
-            self.sudo_moves[agent].append(2)
+            self.sudo_moves[agent].append(2 + int(opponent[-1]))
 
     def remove_card(self, card, agent):
         """
@@ -226,6 +279,7 @@ class parallel_env(ParallelEnv):
             self.reward_debug.append(f"punish {agent} invalid remove card")
         else:
             self.state[agent]["CARDS"][self.state[agent]["CARDS"].index(card)] = "None"
+            DECK.insert(0, card)
 
     def last_turn(self, player):
         """
@@ -234,11 +288,11 @@ class parallel_env(ParallelEnv):
         """
         moves = self.state[player]["MOVES"].copy().reverse()
         if not moves:
-            return 16
+            return 25
         for move in moves:
-            if move < 7:
+            if move < 16:
                 return move
-        return 16
+        return 25
 
     def last_move(self, player):
         """
@@ -247,11 +301,11 @@ class parallel_env(ParallelEnv):
         """
         moves = self.state[player]["MOVES"].copy().reverse()
         if not moves:
-            return 16
+            return 25
         for move in moves:
-            if move != 16:
+            if move != 25:
                 return move
-        return 16
+        return 25
 
     def number_of_cards(self, player):
         """
@@ -278,9 +332,10 @@ class parallel_env(ParallelEnv):
             opponent = "player_0" if agent == "player_1" else "player_1"
 
             # punish incorrect turns
-            if (self.agents.index(agent) != self.state[agent]["TURN"]) and action < 7:
+            if (agent != TURNS[self.state[agent]["TURN"]]) and action != 25:
                 self.rewards[agent] -= 10
                 self.reward_debug.append(f"punish {agent} wrong turn")
+                # action masks!!
                 continue
 
             # punish lack of discard if applicable
@@ -446,7 +501,7 @@ class parallel_env(ParallelEnv):
             self.render()
 
         turn = self.state[agent]["TURN"]
-        next_turn = (turn + 1) % 2  # for two players
+        next_turn = (turn + 1) % 12  # for 4 players
 
         for agent, action in actions.items():
             self.state[agent]["MOVES"].append(action)
