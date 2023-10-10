@@ -12,7 +12,7 @@ from ray.rllib.utils import check_env
 from keras.layers import Dense
 from keras.models import Sequential
 
-from env import coup_env_parallel
+from env import coup_env_multiplayer
 
 
 class Model1(TFModelV2):
@@ -34,7 +34,7 @@ class Model1(TFModelV2):
 
 
 def env_creator(args):
-    env = coup_env_parallel.parallel_env(render_mode="human")
+    env = coup_env_multiplayer.parallel_env(render_mode="all")
     # some super suit functions went here, normalising observations and stacking frames
     # check_env(env)
     return env
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     tune.run(
         "PPO",
         name="PPO",
-        stop={"timesteps_total": 500000},  # 5000000
+        stop={"timesteps_total": 2},  # 5000000
         checkpoint_freq=10,
         local_dir="/Users/jakejones/Documents/repos/git/petting-zoo/ray_results/"
         + env_name,
