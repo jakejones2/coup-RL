@@ -9,7 +9,7 @@ while env.agents:
 
     def select_action(agent):
         mask = list(observations[agent]["action_mask"])
-        # print("mask", mask)
+        print("mask", mask)
         actions = []
         for n in range(26):
             if mask[n]:

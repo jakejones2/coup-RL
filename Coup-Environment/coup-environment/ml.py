@@ -9,34 +9,21 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray import tune
 from ray.rllib.utils import check_env
 
+import tensorflow as tf
 from keras.layers import Dense
 from keras.models import Sequential
+
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
+from ray.rllib.core.testing.bc_algorithm import BCConfigTest
+
 
 from env import coup_env_multiplayer
 
 
-class Model1(TFModelV2):
-    def __init__(self, obs_space, act_space, num_outputs, *args, **kwargs):
-        TFModelV2.__init__(self, obs_space, act_space, num_outputs, *args, **kwargs)
-        self.model = Sequential()
-        self.model.add(Dense(10, input_shape=(1, 10), activation="relu"))
-        self.model.add(Dense(128, activation="relu"))
-        self.model.add(Dense(512, activation="relu"))
-        self.model.add(Dense(128, activation="relu"))
-        self.model.add(Dense(16, activation="softmax"))
-
-    def forward(self, input_dict, state, seq_lens):
-        model_out, self._value_out = self.model(input_dict["obs"])
-        return model_out, state
-
-    # def value_function(self):
-    #     """Something goes here"""
-
-
 def env_creator(args):
-    env = coup_env_multiplayer.parallel_env(render_mode="all")
-    # some super suit functions went here, normalising observations and stacking frames
-    # check_env(env)
+    env = coup_env_multiplayer.parallel_env(render_mode="none")
     return env
 
 
@@ -46,12 +33,12 @@ if __name__ == "__main__":
     env_name = "coup_env_parallel"
 
     register_env(env_name, lambda config: ParallelPettingZooEnv(env_creator(config)))
-    ModelCatalog.register_custom_model("Model1", Model1)
 
     config = (
         PPOConfig()
         .environment(env=env_name, clip_actions=True, disable_env_checking=True)
-        .rollouts(num_rollout_workers=4, rollout_fragment_length=128)  # workers = 4
+        .rollouts(num_rollout_workers=1, rollout_fragment_length=128)  # workers = 4
+        .rl_module(_enable_rl_module_api=True)
         .training(
             train_batch_size=512,
             lr=2e-5,
@@ -64,6 +51,7 @@ if __name__ == "__main__":
             vf_loss_coeff=0.25,
             sgd_minibatch_size=64,
             num_sgd_iter=10,
+            _enable_learner_api=True,
         )
         .debugging(log_level="ERROR")  # bad methods?
         .framework(framework="tf")

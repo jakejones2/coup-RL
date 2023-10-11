@@ -1,7 +1,6 @@
 import functools
 import random
 
-import gymnasium
 import numpy as np
 from gymnasium.spaces import Discrete
 from gymnasium import spaces
@@ -9,10 +8,8 @@ from gymnasium import spaces
 from pettingzoo import ParallelEnv
 from pettingzoo.utils import parallel_to_aec, wrappers
 
-# make deck class with methods take, return, reset and shuffle
-# go through and try optimize performance with numpy and manipulation of integers rather than strings
-# only need one block move?
-# check challenge exchange
+# go through and try optimize performance with numpy and manipulation of integers rather than strings?
+# get rid of global functions and vars?
 
 MOVES = [
     "STEAL0",  # 0
@@ -52,9 +49,6 @@ CARDS = [
     "",  # 5
 ]
 
-DECK = ["ASSASSIN", "AMBASSADOR", "DUKE", "CONTESSA", "CAPTAIN"] * 3
-random.shuffle(DECK)
-
 NUM_ITERS = 80
 
 TURNS = [
@@ -76,24 +70,19 @@ TURNS = [
     "discard-player_3",
 ]
 
-leader_mask = np.pad(np.ones(4), (12, 10))
-three_coin_mask = np.pad(np.ones(8), (8, 10))
-seven_coin_mask = np.pad(np.ones(12), (4, 10))
-ten_card_mask = np.pad(np.ones(4), (4, 18))
-none_mask = np.zeros(26, "int8")  # or just 25?
-challenge_mask = np.append(np.pad(np.array([1]), (19, 5)), [1])
-counter_fe_mask = np.append(np.pad(np.array([1]), (16, 9)), [1])
-counter_stealing_mask = np.append(np.pad(np.array([1, 0, 1]), (17, 5)), [1])
-counter_assassin_mask = np.append(np.pad(np.array([1, 1]), (18, 5)), [1])
-
-
-def reset_deck():
-    DECK = ["ASSASSIN", "AMBASSADOR", "DUKE", "CONTESSA", "CAPTAIN"] * 3
-    random.shuffle(DECK)
-
-
-def take_card():
-    return DECK.pop()
+leader_mask = np.pad(np.ones(4), (12, 10)).astype(np.float32)
+three_coin_mask = np.pad(np.ones(8), (8, 10)).astype(np.float32)
+seven_coin_mask = np.pad(np.ones(12), (4, 10)).astype(np.float32)
+ten_card_mask = np.pad(np.ones(4), (4, 18)).astype(np.float32)
+none_mask = np.zeros(26, np.float32)  # or just 25?
+challenge_mask = np.append(np.pad(np.array([1]), (19, 5)), [1]).astype(np.float32)
+counter_fe_mask = np.append(np.pad(np.array([1]), (16, 8)), [1]).astype(np.float32)
+counter_stealing_mask = np.append(np.pad(np.array([1, 0, 1]), (17, 5)), [1]).astype(
+    np.float32
+)
+counter_assassin_mask = np.append(np.pad(np.array([1, 1]), (18, 5)), [1]).astype(
+    np.float32
+)
 
 
 def gen_turn_list():
@@ -124,47 +113,67 @@ def raw_env(render_mode=None):
     return env
 
 
+class Deck:
+    def __init__(self, size=3):
+        self.deck = ["ASSASSIN", "AMBASSADOR", "DUKE", "CONTESSA", "CAPTAIN"] * size
+        random.shuffle(self.deck)
+
+    def reset(self, size=3):
+        self.deck = ["ASSASSIN", "AMBASSADOR", "DUKE", "CONTESSA", "CAPTAIN"] * size
+        random.shuffle(self.deck)
+
+    def take(self):
+        return self.deck.pop()
+
+    def add(self, card):
+        self.deck.insert(0, card)
+
+
 class parallel_env(ParallelEnv):
     metadata = {"render_modes": ["human"], "name": "coup_v0"}
 
-    def __init__(self, render_mode=None):
+    def __init__(self, render_mode=None, deck=Deck(3)):
         self.possible_agents = ["player_" + str(r) for r in range(4)]
         self._agent_ids = {"player_0", "player_1", "player_2", "player_3"}
         self.agent_name_mapping = dict(
             zip(self.possible_agents, list(range(len(self.possible_agents))))
         )
+        self.deck = deck
         self.render_mode = render_mode
         self.rewards = {}
         self.observation_spaces = {
             agent: spaces.Dict(
                 {
-                    "observation": spaces.Tuple(
-                        (
-                            Discrete(100),  # turn
-                            Discrete(100),  # player0 coins
-                            Discrete(100),  # player1 coins
-                            Discrete(100),  # player2 coins
-                            Discrete(100),  # player3 coins
-                            Discrete(6),  # card 1
-                            Discrete(6),  # card 2
-                            Discrete(6),  # card 3
-                            Discrete(6),  # card 4
-                            Discrete(26),  # player0 last move
-                            Discrete(26),  # player0 second last move
-                            Discrete(26),  # player0 third last move
-                            Discrete(26),  # player1 last move
-                            Discrete(26),  # player1 second last move
-                            Discrete(26),  # player1 third last move
-                            Discrete(26),  # player2 last move
-                            Discrete(26),  # player2 second last move
-                            Discrete(26),  # player2 third last move
-                            Discrete(26),  # player3 last move
-                            Discrete(26),  # player3 second last move
-                            Discrete(26),  # player3 third last move
-                        )
+                    "observations": spaces.Box(
+                        low=0, high=300, shape=(21,), dtype=np.float32
                     ),
+                    # "observations": spaces.Tuple(
+                    #     (
+                    #         Discrete(300),  # turn
+                    #         Discrete(100),  # player0 coins
+                    #         Discrete(100),  # player1 coins
+                    #         Discrete(100),  # player2 coins
+                    #         Discrete(100),  # player3 coins
+                    #         Discrete(6),  # card 1
+                    #         Discrete(6),  # card 2
+                    #         Discrete(6),  # card 3
+                    #         Discrete(6),  # card 4
+                    #         Discrete(26),  # player0 last move
+                    #         Discrete(26),  # player0 second last move
+                    #         Discrete(26),  # player0 third last move
+                    #         Discrete(26),  # player1 last move
+                    #         Discrete(26),  # player1 second last move
+                    #         Discrete(26),  # player1 third last move
+                    #         Discrete(26),  # player2 last move
+                    #         Discrete(26),  # player2 second last move
+                    #         Discrete(26),  # player2 third last move
+                    #         Discrete(26),  # player3 last move
+                    #         Discrete(26),  # player3 second last move
+                    #         Discrete(26),  # player3 third last move
+                    #     )
+                    # ),
                     "action_mask": spaces.Box(
-                        low=0, high=1, shape=(26,), dtype=np.int8
+                        low=0, high=1, shape=(26,), dtype=np.float32
                     ),
                 }
             )
@@ -197,7 +206,7 @@ class parallel_env(ParallelEnv):
         print(string)
 
     def reset(self, seed=None, options=None):
-        reset_deck()
+        self.deck.reset()
         self.turn_list = gen_turn_list()
         self.agents = self.possible_agents
         self.rewards = {}
@@ -205,35 +214,38 @@ class parallel_env(ParallelEnv):
             agent: {
                 "COINS": 0,
                 "MOVES": [25, 25, 25],
-                "CARDS": [take_card(), take_card(), "", ""],
+                "CARDS": [self.deck.take(), self.deck.take(), "", ""],
                 "TURN": 0,
             }
             for agent in self.agents
         }
         observations = {
             agent: {
-                "observation": (
-                    0,  # turn
-                    0,  # player0 coins
-                    0,  # player1 coins
-                    0,  # player2 coins
-                    0,  # player3 coins
-                    CARDS.index(self.state[agent]["CARDS"][0]),  # card 1
-                    CARDS.index(self.state[agent]["CARDS"][1]),  # card 2
-                    5,  # card 3
-                    5,  # card 4
-                    25,  # player0 last move
-                    25,  # player0 second last move
-                    25,  # player0 third last move
-                    25,  # player1 last move
-                    25,  # player1 second last move
-                    25,  # player1 third last move
-                    25,  # player2 last move
-                    25,  # player2 second last move
-                    25,  # player2 third last move
-                    25,  # player3 last move
-                    25,  # player3 second last move
-                    25,  # player3 third last move
+                "observations": np.array(
+                    [
+                        0,  # turn
+                        0,  # player0 coins
+                        0,  # player1 coins
+                        0,  # player2 coins
+                        0,  # player3 coins
+                        CARDS.index(self.state[agent]["CARDS"][0]),  # card 1
+                        CARDS.index(self.state[agent]["CARDS"][1]),  # card 2
+                        5,  # card 3
+                        5,  # card 4
+                        25,  # player0 last move
+                        25,  # player0 second last move
+                        25,  # player0 third last move
+                        25,  # player1 last move
+                        25,  # player1 second last move
+                        25,  # player1 third last move
+                        25,  # player2 last move
+                        25,  # player2 second last move
+                        25,  # player2 third last move
+                        25,  # player3 last move
+                        25,  # player3 second last move
+                        25,  # player3 third last move
+                    ],
+                    dtype=np.float32,
                 ),
                 "action_mask": none_mask,
             }
@@ -270,8 +282,8 @@ class parallel_env(ParallelEnv):
                 self.turn_list.insert(steps, discard_turn)
             # swap out revealed card
             card_index = self.state[target]["CARDS"].index(card)
-            self.state[target]["CARDS"][card_index] = take_card()
-            DECK.insert(0, card)
+            self.state[target]["CARDS"][card_index] = self.deck.take()
+            self.deck.add(card)
             return False
         else:
             self.rewards[target] -= 5
@@ -293,7 +305,7 @@ class parallel_env(ParallelEnv):
         else:
             card_index = self.state[agent]["CARDS"].index(card)
             self.state[agent]["CARDS"][card_index] = ""
-            DECK.insert(0, card)
+            self.deck.add(card)
             self.state[agent]["CARDS"].sort(reverse=True)
 
     def last_turn(self, player):
@@ -450,7 +462,7 @@ class parallel_env(ParallelEnv):
                         cards = self.state[actor]["CARDS"]
                         for n in range(2):
                             free_slot = cards.index("")
-                            self.state[actor]["CARDS"][free_slot] = take_card()
+                            self.state[actor]["CARDS"][free_slot] = self.deck.take()
                             self.turn_list.insert(turn_step + 3, target_discard_turn)
                             if self.number_of_cards(actor) < 3:
                                 break
@@ -692,33 +704,34 @@ class parallel_env(ParallelEnv):
             if self.number_of_cards(agent) == 0:
                 action_mask = none_mask
 
-            action_mask = action_mask.astype("int")
-
             observations[agent] = {
-                "observation": (
-                    turn_step + 1,
-                    self.state["player_0"]["COINS"],
-                    self.state["player_1"]["COINS"],
-                    self.state["player_2"]["COINS"],
-                    self.state["player_3"]["COINS"],
-                    CARDS.index(self.state[agent]["CARDS"][0]),
-                    CARDS.index(self.state[agent]["CARDS"][1]),
-                    CARDS.index(self.state[agent]["CARDS"][2]),
-                    CARDS.index(self.state[agent]["CARDS"][3]),
-                    self.state["player_0"]["MOVES"][-1],
-                    self.state["player_0"]["MOVES"][-2],
-                    self.state["player_0"]["MOVES"][-3],
-                    self.state["player_1"]["MOVES"][-1],
-                    self.state["player_1"]["MOVES"][-2],
-                    self.state["player_1"]["MOVES"][-3],
-                    self.state["player_2"]["MOVES"][-1],
-                    self.state["player_2"]["MOVES"][-2],
-                    self.state["player_2"]["MOVES"][-3],
-                    self.state["player_3"]["MOVES"][-1],
-                    self.state["player_3"]["MOVES"][-2],
-                    self.state["player_3"]["MOVES"][-3],
+                "observations": np.array(
+                    [
+                        turn_step + 1,
+                        self.state["player_0"]["COINS"],
+                        self.state["player_1"]["COINS"],
+                        self.state["player_2"]["COINS"],
+                        self.state["player_3"]["COINS"],
+                        CARDS.index(self.state[agent]["CARDS"][0]),
+                        CARDS.index(self.state[agent]["CARDS"][1]),
+                        CARDS.index(self.state[agent]["CARDS"][2]),
+                        CARDS.index(self.state[agent]["CARDS"][3]),
+                        self.state["player_0"]["MOVES"][-1],
+                        self.state["player_0"]["MOVES"][-2],
+                        self.state["player_0"]["MOVES"][-3],
+                        self.state["player_1"]["MOVES"][-1],
+                        self.state["player_1"]["MOVES"][-2],
+                        self.state["player_1"]["MOVES"][-3],
+                        self.state["player_2"]["MOVES"][-1],
+                        self.state["player_2"]["MOVES"][-2],
+                        self.state["player_2"]["MOVES"][-3],
+                        self.state["player_3"]["MOVES"][-1],
+                        self.state["player_3"]["MOVES"][-2],
+                        self.state["player_3"]["MOVES"][-3],
+                    ],
+                    dtype=np.float32,
                 ),
-                "action_mask": action_mask,
+                "action_mask": action_mask.astype(np.float32),
             }
             infos[agent] = {}
 
