@@ -9,14 +9,14 @@ while env.agents:
 
     def select_action(agent):
         mask = list(observations[agent]["action_mask"])
-        print("mask", mask)
+        # print("mask", mask)
         actions = []
         for n in range(26):
             if mask[n]:
                 actions.append(n)
         if len(actions) == 0:
             actions = [25]
-        print("actions", actions)
+        # print("actions", actions)
         return random.choice(actions)
 
     actions = {agent: select_action(agent) for agent in env.agents}

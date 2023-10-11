@@ -11,24 +11,22 @@ from pettingzoo.utils import parallel_to_aec, wrappers
 
 # make deck class with methods take, return, reset and shuffle
 # go through and try optimize performance with numpy and manipulation of integers rather than strings
-
-# need masks for various money things
-# mask for assassinate and mask for coup
-# mask for steal if others have money...
+# only need one block move?
+# check challenge exchange
 
 MOVES = [
-    "COUP0",  # 0
-    "COUP1",  # 1
-    "COUP2",  # 2
-    "COUP3",  # 3
-    "ASSASSINATE0",  # 4
-    "ASSASSINATE1",  # 5
-    "ASSASSINATE2",  # 6
-    "ASSASSINATE3",  # 7
-    "STEAL0",  # 8
-    "STEAL1",  # 9
-    "STEAL2",  # 10
-    "STEAL3",  # 11
+    "STEAL0",  # 0
+    "STEAL1",  # 1
+    "STEAL2",  # 2
+    "STEAL3",  # 3
+    "COUP0",  # 4
+    "COUP1",  # 5
+    "COUP2",  # 6
+    "COUP3",  # 7
+    "ASSASSINATE0",  # 8
+    "ASSASSINATE1",  # 9
+    "ASSASSINATE2",  # 10
+    "ASSASSINATE3",  # 11
     "INCOME",  # 12
     "FOREIGN AID",  # 13
     "TAX",  # 14
@@ -51,40 +49,42 @@ CARDS = [
     "CAPTAIN",  # 2
     "AMBASSADOR",  # 3
     "ASSASSIN",  # 4
-    "None",  # 5
+    "",  # 5
 ]
 
 DECK = ["ASSASSIN", "AMBASSADOR", "DUKE", "CONTESSA", "CAPTAIN"] * 3
 random.shuffle(DECK)
 
-NUM_ITERS = 100
+NUM_ITERS = 80
 
 TURNS = [
     "player_0",
     "counter-player_0",
-    "challenge-player_0",
+    "challenge-counter-player_0",
     "discard-player_0",
     "player_1",
     "counter-player_1",
-    "challenge-player_1",
+    "challenge-counter-player_1",
     "discard-player_1",
     "player_2",
     "counter-player_2",
-    "challenge-player_2",
+    "challenge-counter-player_2",
     "discard-player_2",
     "player_3",
     "counter-player_3",
-    "challenge-player_3",
+    "challenge-counter-player_3",
     "discard-player_3",
 ]
 
-leader_mask = np.pad(np.array([1, 1, 1]), (12, 11))
-none_mask = np.zeros(26, "int8")
+leader_mask = np.pad(np.ones(4), (12, 10))
+three_coin_mask = np.pad(np.ones(8), (8, 10))
+seven_coin_mask = np.pad(np.ones(12), (4, 10))
+ten_card_mask = np.pad(np.ones(4), (4, 18))
+none_mask = np.zeros(26, "int8")  # or just 25?
 challenge_mask = np.append(np.pad(np.array([1]), (19, 5)), [1])
-counter_fe_mask = np.append(np.pad(np.array([1, 0, 0, 1]), (16, 5)), [1])
+counter_fe_mask = np.append(np.pad(np.array([1]), (16, 9)), [1])
 counter_stealing_mask = np.append(np.pad(np.array([1, 0, 1]), (17, 5)), [1])
 counter_assassin_mask = np.append(np.pad(np.array([1, 1]), (18, 5)), [1])
-discard_mask = np.pad(np.array([1, 1, 1, 1, 1, 1]), (20, 0))
 
 
 def reset_deck():
@@ -99,7 +99,7 @@ def take_card():
 def gen_turn_list():
     round = [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14]
     rounds = []
-    for n in range(100):
+    for n in range(50):
         rounds.extend(round)
     return rounds
 
@@ -182,17 +182,18 @@ class parallel_env(ParallelEnv):
     def action_space(self, agent):
         return self.action_spaces[agent]
 
-    def render(self):
-        string = ""
+    def render(self, last_turn):
+        string = f"\n----{TURNS[last_turn]}----\n"
         for agent in self.agents:
             string += "{}: {}, coins {}, cards {}, rewards {}, \n".format(
                 agent,
                 MOVES[self.state[agent]["MOVES"][-1]],
                 self.state[agent]["COINS"],
-                self.state[agent]["CARDS"],
+                [card for card in self.state[agent]["CARDS"] if card],
                 self.rewards[agent],
             )
-        string += str(self.reward_debug) + "\n"
+        if len(self.reward_debug):
+            string += str(self.reward_debug)
         print(string)
 
     def reset(self, seed=None, options=None):
@@ -203,8 +204,8 @@ class parallel_env(ParallelEnv):
         self.state = {
             agent: {
                 "COINS": 0,
-                "MOVES": [16, 16, 16],
-                "CARDS": [take_card(), take_card(), "None", "None"],
+                "MOVES": [25, 25, 25],
+                "CARDS": [take_card(), take_card(), "", ""],
                 "TURN": 0,
             }
             for agent in self.agents
@@ -221,24 +222,24 @@ class parallel_env(ParallelEnv):
                     CARDS.index(self.state[agent]["CARDS"][1]),  # card 2
                     5,  # card 3
                     5,  # card 4
-                    16,  # player0 last move
-                    16,  # player0 second last move
-                    16,  # player0 third last move
-                    16,  # player1 last move
-                    16,  # player1 second last move
-                    16,  # player1 third last move
-                    16,  # player2 last move
-                    16,  # player2 second last move
-                    16,  # player2 third last move
-                    16,  # player3 last move
-                    16,  # player3 second last move
-                    16,  # player3 third last move
+                    25,  # player0 last move
+                    25,  # player0 second last move
+                    25,  # player0 third last move
+                    25,  # player1 last move
+                    25,  # player1 second last move
+                    25,  # player1 third last move
+                    25,  # player2 last move
+                    25,  # player2 second last move
+                    25,  # player2 third last move
+                    25,  # player3 last move
+                    25,  # player3 second last move
+                    25,  # player3 third last move
                 ),
                 "action_mask": none_mask,
             }
             for agent in self.agents
         }
-        observations["player_0"]["action_mask"] = np.pad(np.array([1, 1, 1]), (12, 11))
+        observations["player_0"]["action_mask"] = leader_mask
         infos = {agent: {} for agent in self.agents}
         return observations, infos
 
@@ -246,7 +247,7 @@ class parallel_env(ParallelEnv):
         """
         Returns true if player holds card, else false
         """
-        return card in self.state[player]["CARDS"]
+        return card in self.state[player]["CARDS"][:-2]
 
     def resolve_challenge(self, card, agent, target, steps):
         """
@@ -254,7 +255,7 @@ class parallel_env(ParallelEnv):
         """
         if self.has_card(card, target):
             if card == "ASSASSIN":
-                self.state[agent]["CARDS"] = ["None", "None", "None", "None"]
+                self.state[agent]["CARDS"] = ["", "", "", ""]
                 self.rewards[agent] -= 10
                 self.reward_debug.append(
                     f"punish {agent} loses game for failed assasination challenge"
@@ -271,6 +272,7 @@ class parallel_env(ParallelEnv):
             card_index = self.state[target]["CARDS"].index(card)
             self.state[target]["CARDS"][card_index] = take_card()
             DECK.insert(0, card)
+            return False
         else:
             self.rewards[target] -= 5
             self.rewards[agent] += 5
@@ -278,6 +280,7 @@ class parallel_env(ParallelEnv):
             self.reward_debug.append(f"punish {target} lose challenge")
             discard_turn = TURNS.index(f"discard-{target}")
             self.turn_list.insert(steps, discard_turn)
+            return True
 
     def remove_card(self, card, agent):
         """
@@ -289,8 +292,9 @@ class parallel_env(ParallelEnv):
             self.reward_debug.append(f"punish {agent} remove card not held")
         else:
             card_index = self.state[agent]["CARDS"].index(card)
-            self.state[agent]["CARDS"][card_index] = "None"
+            self.state[agent]["CARDS"][card_index] = ""
             DECK.insert(0, card)
+            self.state[agent]["CARDS"].sort(reverse=True)
 
     def last_turn(self, player):
         """
@@ -325,15 +329,16 @@ class parallel_env(ParallelEnv):
         cards = self.state[player]["CARDS"]
         count = 0
         for card in cards:
-            if card != "None":
+            if card:
                 count += 1
         return count
 
-    def get_counters(self, actions):
+    def get_counters(self):
         counters = []
-        for agent, action in actions.items():
-            if action in [16, 17, 18]:
-                counters.append({"agent": agent, "move": action})
+        for agent in self.agents:
+            last_move = self.state[agent]["MOVES"][-1]
+            if last_move in [16, 17, 18]:
+                counters.append({"agent": agent, "move": last_move})
         return counters
 
     def step(self, actions):
@@ -345,129 +350,128 @@ class parallel_env(ParallelEnv):
         turn_step = self.state["player_0"]["TURN"]
         turn = self.turn_list[turn_step]
         leader = TURNS[turn] if turn % 4 == 0 else TURNS[turn].split("-")[-1]
-        last_leader_move = self.state[leader]["MOVES"][-(1 + turn % 4)]
+        last_leader_move = self.state[leader]["MOVES"][-(turn % 4)]
         victim = f"player_{last_leader_move % 4}"
 
-        strip_none_actions = [
-            [agent, action] for agent, action in actions.items() if action != 25
-        ]
+        actions = [[agent, action] for agent, action in actions.items() if action != 25]
 
-        if not len(strip_none_actions):
-            strip_none_actions = [["player_0", 25]]
+        if not len(actions):
+            actions = [["player_0", 25]]
 
-        agent, action = random.choice(strip_none_actions)
+        actor, action = random.choice(actions)
 
-        target = "player_" + str(action % 4) if (action < 13) else agent
+        target = "player_" + str(action % 4) if (action < 12) else actor
         target_discard_turn = TURNS.index(f"discard-{target}")
 
         # punish lack of discard
-        if (turn % 4 == 3) and (agent == leader) and not action in [20, 21, 22, 23, 24]:
-            self.rewards[agent] -= 10
-            self.reward_debug.append(f"punish {agent} not discarding")
+        if (turn % 4 == 3) and (actor == leader) and not action in [20, 21, 22, 23, 24]:
+            self.rewards[actor] -= 10
+            self.reward_debug.append(f"punish {actor} not discarding")
 
         # ignore none
         elif action == 25:
             pass
 
         # punish incorrect primary turn
-        elif (turn % 4 == 0) and (agent != leader):
-            self.rewards[agent] -= 10
-            self.reward_debug.append(f"punish {agent} wrong turn")
+        elif (turn % 4 == 0) and (actor != leader):
+            self.rewards[actor] -= 10
+            self.reward_debug.append(f"punish {actor} wrong turn")
 
         # punish incorrect counter
         elif (turn % 4 == 1) and not action in [16, 17, 18, 19]:
-            self.rewards[agent] -= 10
-            self.reward_debug.append(f"punish {agent} bad counter")
+            self.rewards[actor] -= 10
+            self.reward_debug.append(f"punish {actor} bad counter")
 
         # punish incorrect challenge
         elif (turn % 4 == 2) and action != 19:
-            self.rewards[agent] -= 10
-            self.reward_debug.append(f"punish {agent} bad challenge")
+            self.rewards[actor] -= 10
+            self.reward_debug.append(f"punish {actor} bad challenge")
 
         # punish lack of wait for discard
-        elif (turn % 4 == 3) and (agent != leader):
-            self.rewards[agent] -= 10
-            self.reward_debug.append(f"punish {agent} not waiting for discard")
+        elif (turn % 4 == 3) and (actor != leader):
+            self.rewards[actor] -= 10
+            self.reward_debug.append(f"punish {actor} not waiting for discard")
 
         else:
             match action:
-                case [0, 1, 2, 3]:  # COUP
-                    if self.state[agent]["COINS"] >= 7:
-                        self.state[agent]["COINS"] -= 7
-                        self.turn_list.insert(turn_step + 3, target_discard_turn)
-                        self.rewards[agent] += 5
-                        self.rewards[target] -= 5
-                        self.reward_debug.append(f"punish {target} coup")
-                        self.reward_debug.append(f"reward {agent} coup")
-                    else:
-                        self.rewards[agent] -= 10
-                        self.reward_debug.append(f"punish {agent} cannot afford coup")
-                case [4, 5, 6, 7]:  # ASSASSINATE
-                    if self.state[agent]["COINS"] >= 3:
-                        self.state[agent]["COINS"] -= 3
-                        self.turn_list.insert(turn_step + 3, target_discard_turn)
-                        self.rewards[agent] += 5
-                        self.rewards[target] -= 5
-                        self.reward_debug.append(f"reward {agent} assassinate")
-                        self.reward_debug.append(f"punish {target} assassinated")
-                    else:
-                        self.rewards[agent] -= 10
-                        self.reward_debug.append(
-                            f"punish {agent} cannot afford assassination"
-                        )
-                case [8, 9, 10, 11]:  # STEAL
+                case 0 | 1 | 2 | 3:  # STEAL
                     if self.state[target]["COINS"] >= 2:
-                        self.state[agent]["COINS"] += 2
+                        self.state[actor]["COINS"] += 2
                         self.state[target]["COINS"] -= 2
-                        self.rewards[agent] += 2
+                        self.rewards[actor] += 2
                         self.rewards[target] -= 2
-                        self.reward_debug.append(f"reward {agent} steal 2")
+                        self.reward_debug.append(f"reward {actor} steal 2")
                         self.reward_debug.append(f"punish {target} 2 stolen")
                     elif self.state[target]["COINS"] == 1:
-                        self.state[agent]["COINS"] += 1
+                        self.state[actor]["COINS"] += 1
                         self.state[target]["COINS"] -= 1
-                        self.rewards[agent] += 1
+                        self.rewards[actor] += 1
                         self.rewards[target] -= 1
-                        self.reward_debug.append(f"reward {agent} steal 1")
+                        self.reward_debug.append(f"reward {actor} steal 1")
                         self.reward_debug.append(f"punish {target} 1 stolen")
+                case 4 | 5 | 6 | 7:  # COUP
+                    if self.state[actor]["COINS"] >= 7:
+                        self.state[actor]["COINS"] -= 7
+                        self.turn_list.insert(turn_step + 3, target_discard_turn)
+                        self.rewards[actor] += 5
+                        self.rewards[target] -= 5
+                        self.reward_debug.append(f"punish {target} coup")
+                        self.reward_debug.append(f"reward {actor} coup")
+                    else:
+                        self.rewards[actor] -= 10
+                        self.reward_debug.append(f"punish {actor} cannot afford coup")
+                case 8 | 9 | 10 | 11:  # ASSASSINATE
+                    if self.state[actor]["COINS"] >= 3:
+                        self.state[actor]["COINS"] -= 3
+                        self.turn_list.insert(turn_step + 3, target_discard_turn)
+                        self.rewards[actor] += 5
+                        self.rewards[target] -= 5
+                        self.reward_debug.append(f"reward {actor} assassinate")
+                        self.reward_debug.append(f"punish {target} assassinated")
+                    else:
+                        self.rewards[actor] -= 10
+                        self.reward_debug.append(
+                            f"punish {actor} cannot afford assassination"
+                        )
                 case 12:  # INCOME
-                    self.state[agent]["COINS"] += 1
-                    self.rewards[agent] += 1
-                    self.reward_debug.append(f"reward {agent} income")
+                    self.state[actor]["COINS"] += 1
+                    self.rewards[actor] += 1
+                    self.reward_debug.append(f"reward {actor} income")
                 case 13:  # FOREIGN AID
-                    self.state[agent]["COINS"] += 2
-                    self.rewards[agent] += 2
-                    self.reward_debug.append(f"reward {agent} FE")
+                    self.state[actor]["COINS"] += 2
+                    self.rewards[actor] += 2
+                    self.reward_debug.append(f"reward {actor} FE")
                 case 14:  # TAX
-                    self.state[agent]["COINS"] += 3
-                    self.rewards[agent] += 3
-                    self.reward_debug.append(f"reward {agent} tax")
+                    self.state[actor]["COINS"] += 3
+                    self.rewards[actor] += 3
+                    self.reward_debug.append(f"reward {actor} tax")
                 case 15:  # EXCHANGE
                     try:
-                        cards = self.state[agent]["CARDS"]
+                        cards = self.state[actor]["CARDS"]
                         for n in range(2):
-                            free_slot = cards.index("None")
-                            self.state[agent]["CARDS"][free_slot] = take_card()
+                            free_slot = cards.index("")
+                            self.state[actor]["CARDS"][free_slot] = take_card()
                             self.turn_list.insert(turn_step + 3, target_discard_turn)
-                            if self.number_of_cards(agent) < 3:
+                            if self.number_of_cards(actor) < 3:
                                 break
+                        self.state[actor]["CARDS"].sort(reverse=True)
                     except ValueError:
-                        self.rewards[agent] -= 3
-                        self.reward_debug.append(f"punish {agent} invalid exchange")
+                        self.rewards[actor] -= 3
+                        self.reward_debug.append(f"punish {actor} invalid exchange")
                 case 16:  # BLOCK FOREIGN AID
                     if last_leader_move != 13:
-                        self.rewards[agent] -= 10
-                        self.reward_debug.append(f"punish {agent} invalid block FE")
+                        self.rewards[actor] -= 10
+                        self.reward_debug.append(f"punish {actor} invalid block FE")
                     else:
                         self.state[leader]["COINS"] -= 2
                         self.rewards[leader] -= 2
-                        self.rewards[agent] += 2
+                        self.rewards[actor] += 2
                         self.reward_debug.append(f"punish {leader} FE blocked")
-                        self.reward_debug.append(f"reward {agent} block FE")
+                        self.reward_debug.append(f"reward {actor} block FE")
                 case 17:  # BLOCK STEALING
-                    if not last_leader_move in [8, 9, 10, 11]:
-                        self.rewards[agent] -= 10
-                        self.reward_debug.append(f"punish {agent} invalid block steal")
+                    if not last_leader_move < 4:
+                        self.rewards[actor] -= 10
+                        self.reward_debug.append(f"punish {actor} invalid block steal")
                     else:
                         self.state[leader]["COINS"] -= 2
                         self.state[victim]["COINS"] += 2
@@ -478,109 +482,217 @@ class parallel_env(ParallelEnv):
                             f"reward {victim} stolen coins returned"
                         )
                 case 18:  # BLOCK ASSASSINATION
-                    if not last_leader_move in [4, 5, 6, 7]:
-                        self.rewards[agent] -= 10
+                    if not last_leader_move in [8, 9, 10, 11]:
+                        self.rewards[actor] -= 10
                         self.reward_debug.append(
-                            f"punish {agent} invalid block assassination"
+                            f"punish {actor} invalid block assassination"
                         )
                     else:
                         self.turn_list.pop(turn_step + 2)
                         self.rewards[leader] -= 5
                         self.rewards[victim] += 5
-                        self.reward_debug.append(f"reward {victim} block assassination")
+                        self.reward_debug.append(
+                            f"reward {victim} avoids assassination"
+                        )
                         self.reward_debug.append(
                             f"punish {leader} assassination blocked"
                         )
                 case 19:  # CHALLENGE
-                    challenged_move = self.state[agent]["MOVES"][-1]
+                    # prepare
                     if turn % 4 == 1:
                         challenged_move = last_leader_move
                         target = leader
                         steps = turn_step + 2
                     else:
-                        counters = self.get_counters(actions)
+                        counters = self.get_counters()
                         steps = turn_step + 1
                         if len(counters):
                             counter = random.choice(self.get_counters())
                             challenged_move = counter["move"]
                             target = counter["agent"]
-                    if challenged_move in [14, 16]:
-                        self.resolve_challenge("DUKE", agent, target, steps)
-                    elif challenged_move in [4, 5, 6, 7]:
-                        self.resolve_challenge("ASSASSIN", agent, target, steps)
-                    elif challenged_move == 15:
-                        self.resolve_challenge("AMBASSADOR", agent, target, steps)
+                        else:
+                            challenged_move = 25
+                    # execute
+                    if challenged_move == 25:
+                        pass
+                    elif challenged_move in [14, 16]:
+                        fail = self.resolve_challenge("DUKE", actor, target, steps)
+                        if fail and challenged_move == 14:
+                            self.state[target]["COINS"] -= 3
+                            self.rewards[target] -= 3
+                            self.reward_debug.append(
+                                f"punish {target} loses former tax reward"
+                            )
+                        if fail and challenged_move == 16:
+                            self.state[leader]["COINS"] += 2
+                            self.rewards[leader] += 2
+                            self.rewards[target] -= 2
+                            self.reward_debug.append(f"reward {leader} regains FE")
+                            self.reward_debug.append(
+                                f"punish {target} loses former block FE reward"
+                            )
                     elif challenged_move in [8, 9, 10, 11]:
-                        self.resolve_challenge("CAPTAIN", agent, target, steps)
+                        fail = self.resolve_challenge("ASSASSIN", actor, target, steps)
+                        if fail:
+                            self.rewards[target] -= 5
+                            self.reward_debug.append(
+                                f"punish {target} loses former assassination reward"
+                            )
+                        if not fail:
+                            self.turn_list.pop(turn_step + 2)
+                            self.rewards[victim] += 5
+                            self.rewards[target] -= 5
+                            self.reward_debug.append(
+                                f"reward {victim} avoids assassination"
+                            )
+                            self.reward_debug.append(
+                                f"punish {target} loses assassination reward"
+                            )
+
+                    elif challenged_move == 15:
+                        fail = self.resolve_challenge(
+                            "AMBASSADOR", actor, target, steps
+                        )
+                        if fail:
+                            self.state[target]["CARDS"][2] = ""
+                            self.state[target]["CARDS"][3] = ""
+                            self.turn_list.pop(turn_step + 2)
+                            self.turn_list.pop(turn_step + 2)
+
+                    elif challenged_move < 4:
+                        fail = self.resolve_challenge("CAPTAIN", actor, target, steps)
+                        if fail:
+                            self.state[victim]["COINS"] += 2
+                            self.state[target]["COINS"] -= 2
+                            self.rewards[victim] += 2
+                            self.rewards[target] -= 2
+                            self.reward_debug.append(
+                                f"reward {victim} wins back stolen coins"
+                            )
+                            self.reward_debug.append(
+                                f"punish {target} loses former steal reward"
+                            )
                     elif challenged_move == 17:
                         if self.has_card("CAPTAIN", target):
-                            self.resolve_challenge("CAPTAIN", agent, target, steps)
+                            fail = self.resolve_challenge(
+                                "CAPTAIN", actor, target, steps
+                            )
                         else:
-                            self.resolve_challenge("AMBASSADOR", agent, target, steps)
+                            fail = self.resolve_challenge(
+                                "AMBASSADOR", actor, target, steps
+                            )
+                        if fail:
+                            self.state[leader]["COINS"] += 2
+                            self.state[victim]["COINS"] -= 2
+                            self.rewards[leader] += 2
+                            self.rewards[victim] -= 2
+                            self.reward_debug.append(
+                                f"punish {victim} loses coins despite block"
+                            )
+                            self.reward_debug.append(
+                                f"reward {leader} regains stolen coins"
+                            )
                     elif challenged_move == 18:
-                        self.resolve_challenge("CONTESSA", agent, target, steps)
+                        self.resolve_challenge("CONTESSA", actor, target, steps)
+                        # failure handled within resolution
                     else:
-                        self.rewards[agent] -= 10
+                        self.rewards[actor] -= 10
                         self.reward_debug.append(
-                            f"punish {agent} challenged generic move"
+                            f"punish {actor} challenged generic move"
                         )
                 case 20:  # DISCARD DUKE
-                    self.remove_card("DUKE", agent)
+                    self.remove_card("DUKE", actor)
                 case 21:  # DISCARD CONTESSA
-                    self.remove_card("CONTESSA", agent)
+                    self.remove_card("CONTESSA", actor)
                 case 22:  # DISCARD CAPTAIN
-                    self.remove_card("CAPTAIN", agent)
+                    self.remove_card("CAPTAIN", actor)
                 case 23:  # DISCARD AMBASSADOR
-                    self.remove_card("AMBASSADOR", agent)
+                    self.remove_card("AMBASSADOR", actor)
                 case 24:  # DISCARD ASSASSIN
-                    self.remove_card("ASSASSIN", agent)
+                    self.remove_card("ASSASSIN", actor)
                 case 25:  # None
                     pass
 
-        # ensure coins remain positive
+        # determine next turn
+        if action in [4, 5, 6, 7, 12, 25] and turn % 4 == 0:
+            new_step = turn_step + 3
+        elif action in [19, 25] and turn % 4 == 1:
+            new_step = turn_step + 2
+        else:
+            new_step = turn_step + 1
+        next_turn = self.turn_list[new_step]
+
+        # update all state and determine stealable players for mask
+        stealable = []
+        dead = []
+        self.state[actor]["MOVES"].append(action)
         for agent in self.agents:
-            if self.state[agent]["COINS"] < 0:
+            self.state[agent]["TURN"] = new_step
+            coins = self.state[agent]["COINS"]
+            if coins > 0 and self.number_of_cards(agent):
+                stealable.append(int(agent[-1]))
+            else:
                 self.state[agent]["COINS"] = 0
+            if self.number_of_cards(agent) == 0:
+                dead.append(int(agent[-1]) + 4)
+                dead.append(int(agent[-1]) + 8)
+            if agent != actor:
+                self.state[agent]["MOVES"].append(25)
 
-        had_moves = False
-        for agent, action in actions.items():
-            if action != 25:
-                had_moves = True
-            self.state[agent]["MOVES"].append(action)
-
-        next_turn = self.turn_list[turn_step + 1]
-
+        # create mask and observations
         for agent in self.agents:
-            self.state[agent]["TURN"] += 1
+            coins = self.state[agent]["COINS"]
             action_mask = none_mask
             if (next_turn % 4 == 0) and agent == TURNS[next_turn]:
                 action_mask = leader_mask
-                # need masks for various money things
-                # mask for assassinate and mask for coup
-                # mask for steal if others have money...
-
+                if coins >= 3:
+                    action_mask = three_coin_mask
+                if coins >= 7:
+                    action_mask = seven_coin_mask
+                # can steal from those with coins
+                for action in stealable:
+                    action_mask[action] = 1
+                # cannot coup or assassinate dead players
+                for action in dead:
+                    action_mask[action] = 0
+                if coins >= 10:
+                    action = ten_card_mask
             elif next_turn % 4 == 1:
                 leader = TURNS[next_turn].split("-")[-1]
-                last_leader_move = self.state[leader]["MOVES"][-2]
+                last_leader_move = self.state[leader]["MOVES"][-1]
                 if agent == leader:
                     pass
                 elif last_leader_move == 13:
                     action_mask = counter_fe_mask
-                elif last_leader_move in [8, 9, 10, 11]:
+                elif last_leader_move < 4:
                     action_mask = counter_stealing_mask
-                elif last_leader_move in [4, 5, 6, 7]:
+                elif last_leader_move in [8, 9, 10, 11]:
                     action_mask = counter_assassin_mask
+                elif last_leader_move in [14, 15]:
+                    action_mask = challenge_mask
             elif next_turn % 4 == 2:
-                if self.state[agent]["MOVES"][-2] == 25 and had_moves:
+                if self.state[agent]["MOVES"][-1] == 25 and not action in [25, 19]:
                     action_mask = challenge_mask
             elif next_turn % 4 == 3:
                 if agent == TURNS[next_turn].split("-")[-1]:
                     cards = self.state[agent]["CARDS"]
-                    cards = [CARDS.index(card) + 20 for card in cards if card != "None"]
+                    cards = [CARDS.index(card) + 20 for card in cards if card]
                     zeros = [0] * 26
                     for card in cards:
                         zeros[card] = 1
                     action_mask = np.array(zeros)
+
+            # ensure cannot act against self
+            agent_num = int(agent[-1])
+            action_mask[agent_num] = 0
+            action_mask[agent_num + 4] = 0
+            action_mask[agent_num + 8] = 0
+
+            # ensure dead players cannot act
+            if self.number_of_cards(agent) == 0:
+                action_mask = none_mask
+
+            action_mask = action_mask.astype("int")
 
             observations[agent] = {
                 "observation": (
@@ -619,11 +731,11 @@ class parallel_env(ParallelEnv):
 
         players_left = [item[0] for item in terminations.items() if item[1] == False]
 
-        if self.render_mode in ["human", "all"]:
-            self.render()
+        if self.render_mode in ["human"]:
+            self.render(turn)
 
         if env_truncation or len(players_left) == 1:
-            print("Game Over")
+            print(f"Game Over - {players_left[0]} wins!")
             self.rewards[players_left[0]] += 30
             self.agents = []
 
