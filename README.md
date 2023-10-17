@@ -8,12 +8,6 @@ Bigger challenge is the RLlib algorithms. Currently unable to use the action mas
 
 To see current progress, run `random_policy.py`. This plays the game with random decisions by each agent.
 
-## Links (ignore):
-
-https://docs.ray.io/en/master/rllib/rllib-sample-collection.html
-https://discuss.ray.io/t/problem-with-action-masking/6145/8
-https://docs.ray.io/en/latest/rllib/rllib-rlmodule.html
-
 ## Notes (ignore):
 
 Old env observation space (precise bounds for each data point):
