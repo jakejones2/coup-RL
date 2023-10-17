@@ -4,7 +4,7 @@ Trying to train a keras model to play the card game **[Coup](https://www.ultrabo
 
 Environment nearly ready - missing a few subtleties of play such as the correct reinburcement when blocking a steal of 1 coin. Also need to redesign to take a variable number of players from 2-6 (this should be quite simple).
 
-Bigger challenge is the RLlib algorithms. Currently unable to use the action mask in training, which is massively inefficient. Once this is fixed, need to optimise model layers and PPO settings. Then create a web app to play the game!
+Bigger challenge is the RLlib algorithms. Currently unable to use the action mask in training, which is massively inefficient and causes [this error](https://github.com/ray-project/ray/issues/10761). Once this is fixed, need to optimise model layers and PPO settings. Then create a web app to play the game!
 
 To see current progress, run `random_policy.py`. This plays the game with random decisions by each agent.
 
