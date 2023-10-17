@@ -1,8 +1,8 @@
-# Coup Environment
+# Coup-RL
 
-Trying to train a keras model to play the card game **[Coup](https://www.ultraboardgames.com/coup/game-rules.php)**. This is a work in progress!
+Trying to train a keras model to play the card game **[Coup](https://www.ultraboardgames.com/coup/game-rules.php)** using Reinforcement Learning. This is a work in progress!
 
-Environment nearly ready - missing a few subtleties of play such as the correct reinburcement when blocking a steal of 1 coin. Also need to redesign to take a variable number of players from 2-6 (this should be quite simple).
+Environment is nearly ready - missing a few subtleties of play such as the correct reinburcement when blocking a steal of 1 coin. Also need to redesign to take a variable number of players from 2-6 (this should be quite simple).
 
 Bigger challenge is the RLlib algorithms. Currently unable to use the action mask in training, which is massively inefficient and causes [this error](https://github.com/ray-project/ray/issues/10761). Once this is fixed, need to optimise model layers and PPO settings. Then create a web app to play the game!
 
