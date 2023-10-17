@@ -112,6 +112,7 @@ def raw_env(render_mode=None):
 
 class Deck:
     def __init__(self, size=3):
+        self.size = size
         self.deck = ["ASSASSIN", "AMBASSADOR", "DUKE", "CONTESSA", "CAPTAIN"] * size
         random.shuffle(self.deck)
 
@@ -121,13 +122,28 @@ class Deck:
     def add(self, card):
         self.deck.insert(0, card)
 
+    def reset(self):
+        self.deck = [
+            "ASSASSIN",
+            "AMBASSADOR",
+            "DUKE",
+            "CONTESSA",
+            "CAPTAIN",
+        ] * self.size
+        random.shuffle(self.deck)
+
 
 class CoupFourPlayers(ParallelEnv):
+    """
+    Environment for the card game 'Coup'. See rules here: https://www.ultraboardgames.com/coup/game-rules.php
+    """
+
     metadata = {"render_modes": ["human"], "name": "coup_v0"}
 
     def __init__(self, render_mode=None, deck=Deck(3)):
+        # need to make number of players dynamic
         self.possible_agents = ["player_" + str(r) for r in range(4)]
-        self._agent_ids = {"player_0", "player_1", "player_2", "player_3"}
+        self._agent_ids = set(self.possible_agents)
         self.agent_name_mapping = dict(
             zip(self.possible_agents, list(range(len(self.possible_agents))))
         )
@@ -140,31 +156,6 @@ class CoupFourPlayers(ParallelEnv):
                     "observations": spaces.Box(
                         low=0, high=300, shape=(21,), dtype=np.float32
                     ),
-                    # "observations": spaces.Tuple(
-                    #     (
-                    #         Discrete(300),  # turn
-                    #         Discrete(100),  # player0 coins
-                    #         Discrete(100),  # player1 coins
-                    #         Discrete(100),  # player2 coins
-                    #         Discrete(100),  # player3 coins
-                    #         Discrete(6),  # card 1
-                    #         Discrete(6),  # card 2
-                    #         Discrete(6),  # card 3
-                    #         Discrete(6),  # card 4
-                    #         Discrete(26),  # player0 last move
-                    #         Discrete(26),  # player0 second last move
-                    #         Discrete(26),  # player0 third last move
-                    #         Discrete(26),  # player1 last move
-                    #         Discrete(26),  # player1 second last move
-                    #         Discrete(26),  # player1 third last move
-                    #         Discrete(26),  # player2 last move
-                    #         Discrete(26),  # player2 second last move
-                    #         Discrete(26),  # player2 third last move
-                    #         Discrete(26),  # player3 last move
-                    #         Discrete(26),  # player3 second last move
-                    #         Discrete(26),  # player3 third last move
-                    #     )
-                    # ),
                     "action_mask": spaces.Box(
                         low=0, high=1, shape=(26,), dtype=np.float32
                     ),
@@ -199,7 +190,7 @@ class CoupFourPlayers(ParallelEnv):
         print(string)
 
     def reset(self, seed=None, options=None):
-        self.deck = Deck()
+        self.deck.reset()
         self.turn_list = gen_turn_list()
         self.agents = self.possible_agents
         self.rewards = {}
