@@ -1,8 +1,6 @@
 import os
 
-import numpy as np
-
-from gymnasium.spaces import Box, Discrete, Dict
+from gymnasium.spaces import Dict
 
 import ray
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
@@ -15,10 +13,8 @@ from ray.rllib.utils import check_env
 from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 
 import tensorflow as tf
-from keras.layers import Dense
-from keras.models import Sequential
 
-from env import coup_env_multiplayer
+from env.coup_env import CoupFourPlayers
 
 
 class Model1(TFModelV2):
@@ -65,8 +61,8 @@ class Model1(TFModelV2):
 if __name__ == "__main__":
 
     def env_creator(args):
-        env = coup_env_multiplayer.parallel_env(render_mode="none")
-        # some super suit functions went here, normalising observations and stacking frames
+        env = CoupFourPlayers(render_mode="none")
+        # seen super suit functions here, normalising observations and stacking frames
         # check_env(env)
         return env
 
@@ -96,7 +92,7 @@ if __name__ == "__main__":
             model={"custom_model": "Model1", "vf_share_layers": True},
             _enable_learner_api=False,
         )
-        .debugging(log_level="ERROR")  # bad methods?
+        .debugging(log_level="ERROR")
         .framework(framework="tf2")
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
