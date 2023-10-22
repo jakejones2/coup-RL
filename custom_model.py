@@ -14,6 +14,8 @@ from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 
 import tensorflow as tf
 
+import supersuit as ss
+
 from env.coup_env import CoupFourPlayers
 
 
@@ -29,6 +31,8 @@ class Model1(TFModelV2):
         )
         super().__init__(obs_space, action_space, num_outputs, model_config, name)
 
+        # action_space is Discrete(26)
+
         self.internal_model = FullyConnectedNetwork(
             orig_space["observations"],
             action_space,
@@ -43,7 +47,7 @@ class Model1(TFModelV2):
 
     def forward(self, input_dict, state, seq_lens):
         action_mask = input_dict["obs"]["action_mask"]
-        print(input_dict)
+        print("action mask here --> ", action_mask)
         logits, _ = self.internal_model({"obs": input_dict["obs"]["observations"]})
 
         # If action masking is disabled, directly return unmasked logits
@@ -62,21 +66,26 @@ if __name__ == "__main__":
 
     def env_creator(args):
         env = CoupFourPlayers(render_mode="none")
-        # seen super suit functions here, normalising observations and stacking frames
-        # check_env(env)
-        return env
+        # supersuit cannot handle the dict type observation with action_mask key - expects np.array
+        # env = ss.dtype_v0(env, "float32")
+        # env = ss.normalize_obs_v0(env, env_min=0, env_max=1)
+        wrapped_env = ParallelPettingZooEnv(env)
+        # this shouldn't be neccessary - some sort of bug here?
+        # https://github.com/ray-project/ray/blob/master/rllib/env/wrappers/pettingzoo_env.py
+        wrapped_env._agent_ids = set(env.agents)
+        return wrapped_env
 
     ray.init()
 
-    env_name = "coup_env_parallel"
-    register_env(env_name, lambda config: ParallelPettingZooEnv(env_creator(config)))
+    env_name = "coup_env_parallel_logs"
+    register_env(env_name, lambda config: env_creator(config))
     ModelCatalog.register_custom_model("Model1", Model1)
 
     config = (
         PPOConfig()
-        .environment(env=env_name, clip_actions=True, disable_env_checking=True)
-        .rollouts(num_rollout_workers=1, rollout_fragment_length=128)  # workers = 4
         .rl_module(_enable_rl_module_api=False)
+        .environment(env=env_name, clip_actions=True, disable_env_checking=False)
+        .rollouts(num_rollout_workers=1, rollout_fragment_length=128)  # workers = 4
         .training(
             train_batch_size=512,
             lr=2e-5,
