@@ -6,7 +6,6 @@ from ray.tune.registry import register_env
 from ray.rllib.models import ModelCatalog
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray import tune
-from ray.rllib.utils import check_env
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.utils.annotations import override
@@ -15,10 +14,9 @@ import tree
 
 from typing import (
     List,
-    Optional,
     Union,
 )
-from ray.rllib.utils.typing import ModelWeights, TensorStructType, TensorType
+from ray.rllib.utils.typing import TensorStructType
 
 from model import Model1
 from env.coup_env import CoupFourPlayers
@@ -51,11 +49,9 @@ class MaskedRandomPolicy(RandomPolicy):
 
 if __name__ == "__main__":
 
-    def env_creator(args):
+    def env_creator(config):
         env = CoupFourPlayers(render_mode="games")
         wrapped_env = ParallelPettingZooEnv(env)
-        # this shouldn't be neccessary - some sort of bug here?
-        # https://github.com/ray-project/ray/blob/master/rllib/env/wrappers/pettingzoo_env.py
         wrapped_env._agent_ids = set(env.agents)
         return wrapped_env
 

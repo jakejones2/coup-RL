@@ -4,7 +4,6 @@ from ray.tune.registry import register_env
 from ray.rllib.models import ModelCatalog
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray import tune
-from ray.rllib.utils import check_env
 
 from model import Model1
 from env.coup_env import CoupFourPlayers
