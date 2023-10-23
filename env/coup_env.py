@@ -114,7 +114,10 @@ class Deck:
         random.shuffle(self.deck)
 
     def take(self):
-        return self.deck.pop()
+        try:
+            return self.deck.pop()
+        except IndexError:
+            return CARDS[random.randint(0, 4)]
 
     def add(self, card):
         self.deck.insert(0, card)
@@ -686,21 +689,23 @@ class CoupFourPlayers(ParallelEnv):
         infos = {agent: {} for agent in self.agents}
         env_truncation = new_step >= NUM_ITERS
         truncations = {agent: env_truncation for agent in self.agents}
+        truncations["__all__"] = False
         # seems that you cannot report one agent terminated with RLlib?
         # this is potentially the source of the single trajectory error
         # https://github.com/ray-project/ray/issues/10761
         dead = {agent: self.number_of_cards(agent) == 0 for agent in self.agents}
         players_left = [item[0] for item in dead.items() if item[1] == False]
         terminations = {agent: False for agent in self.agents}
+        terminations["__all__"] = False
 
         if self.render_mode in ["human"]:
             self.render(turn)
 
         if env_truncation or len(players_left) == 1:
-            print(f"Game Over - {players_left[0]} wins!")
+            if self.render_mode in ["human"]:
+                print(f"Game Over - {players_left[0]} wins!")
             terminations["__all__"] = True
             truncations["__all__"] = True
             self.rewards[players_left[0]] += 30
-            # self.agents = []
 
         return observations, self.rewards, terminations, truncations, infos
