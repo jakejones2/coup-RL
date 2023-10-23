@@ -29,7 +29,9 @@ class Model1(TFModelV2):
             and "action_mask" in orig_space.spaces
             and "observations" in orig_space.spaces
         )
-        super().__init__(obs_space, action_space, num_outputs, model_config, name)
+        super(Model1, self).__init__(
+            obs_space, action_space, num_outputs, model_config, name
+        )
 
         # action_space is Discrete(26)
 
@@ -48,14 +50,16 @@ class Model1(TFModelV2):
     def forward(self, input_dict, state, seq_lens):
         action_mask = input_dict["obs"]["action_mask"]
         print("action mask here --> ", action_mask)
+        print("observation here ->", input_dict["obs"]["observations"])
         logits, _ = self.internal_model({"obs": input_dict["obs"]["observations"]})
-
+        print("unmasked logits here -> ", logits)
         # If action masking is disabled, directly return unmasked logits
         if self.no_masking:
             return logits, state
 
         inf_mask = tf.maximum(tf.math.log(action_mask), tf.float32.min)
         masked_logits = logits + inf_mask
+        print("masked_logits here -> ", masked_logits)
         return masked_logits, state
 
     def value_function(self):
@@ -65,7 +69,7 @@ class Model1(TFModelV2):
 if __name__ == "__main__":
 
     def env_creator(args):
-        env = CoupFourPlayers(render_mode="none")
+        env = CoupFourPlayers(render_mode="human")
         # supersuit cannot handle the dict type observation with action_mask key - expects np.array
         # env = ss.dtype_v0(env, "float32")
         # env = ss.normalize_obs_v0(env, env_min=0, env_max=1)
@@ -84,7 +88,11 @@ if __name__ == "__main__":
     config = (
         PPOConfig()
         .rl_module(_enable_rl_module_api=False)
-        .environment(env=env_name, clip_actions=True, disable_env_checking=False)
+        .environment(
+            env=env_name,
+            disable_env_checking=False,
+            action_mask_key="action_mask",
+        )  # clip_actions=True
         .rollouts(num_rollout_workers=1, rollout_fragment_length=128)  # workers = 4
         .training(
             train_batch_size=512,
@@ -115,3 +123,5 @@ if __name__ == "__main__":
         + env_name,
         config=config.to_dict(),
     )
+
+# RAY_DEDUP_LOGS=0 py custom_model.py

@@ -72,7 +72,7 @@ leader_mask = np.pad(np.ones(4), (12, 10))
 three_coin_mask = np.pad(np.ones(8), (8, 10))
 seven_coin_mask = np.pad(np.ones(12), (4, 10))
 ten_card_mask = np.pad(np.ones(4), (4, 18))
-none_mask = np.zeros(26)  # or just 25?
+none_mask = np.append(np.zeros(25), [1])
 challenge_mask = np.append(np.pad(np.array([1]), (19, 5)), [1])
 counter_fe_mask = np.append(np.pad(np.array([1]), (16, 8)), [1])
 counter_stealing_mask = np.append(np.pad(np.array([1, 0, 1]), (17, 5)), [1])
@@ -263,7 +263,7 @@ class CoupFourPlayers(ParallelEnv):
                 ],
                 dtype=np.float32,
             ),
-            "action_mask": action_mask.astype(np.float32),
+            "action_mask": action_mask.astype(np.int8),
         }
 
     def render(self, last_turn):
@@ -686,16 +686,20 @@ class CoupFourPlayers(ParallelEnv):
         infos = {agent: {} for agent in self.agents}
         env_truncation = new_step >= NUM_ITERS
         truncations = {agent: env_truncation for agent in self.agents}
-        terminations = {
-            agent: self.number_of_cards(agent) == 0 for agent in self.agents
-        }
-        players_left = [item[0] for item in terminations.items() if item[1] == False]
+        # seems that you cannot report one agent terminated with RLlib?
+        # this is potentially the source of the single trajectory error
+        # https://github.com/ray-project/ray/issues/10761
+        dead = {agent: self.number_of_cards(agent) == 0 for agent in self.agents}
+        players_left = [item[0] for item in dead.items() if item[1] == False]
+        terminations = {agent: False for agent in self.agents}
 
         if self.render_mode in ["human"]:
             self.render(turn)
 
         if env_truncation or len(players_left) == 1:
             print(f"Game Over - {players_left[0]} wins!")
+            terminations["__all__"] = True
+            truncations["__all__"] = True
             self.rewards[players_left[0]] += 30
             # self.agents = []
 
