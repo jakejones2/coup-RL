@@ -114,3 +114,7 @@ if __name__ == "__main__":
 # RAY_DEDUP_LOGS=0 py custom_model.py
 # https://github.com/ray-project/ray/blob/master/rllib/examples/self_play_with_open_spiel.py
 # https://github.com/ray-project/ray/blob/master/rllib/examples/policy/random_policy.py
+# https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py
+# https://github.com/PacktPublishing/Mastering-Reinforcement-Learning-with-Python/blob/master/Chapter10/mcar_train.py
+# https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py
+# https://docs.ray.io/en/latest/rllib/rllib-algorithms.html#multi-agent
