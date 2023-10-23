@@ -88,7 +88,7 @@ def gen_turn_list():
 
 
 def env(render_mode=None):
-    internal_render_mode = render_mode if render_mode != "ansi" else "human"
+    internal_render_mode = render_mode if render_mode != "ansi" else "moves"
     env = raw_env(render_mode=internal_render_mode)
     if render_mode == "ansi":
         env = wrappers.CaptureStdoutWrapper(env)
@@ -138,7 +138,7 @@ class CoupFourPlayers(ParallelEnv):
     Environment for the card game 'Coup'. See rules here: https://www.ultraboardgames.com/coup/game-rules.php
     """
 
-    metadata = {"render_modes": ["human"], "name": "coup_v0"}
+    metadata = {"render_modes": ["moves"], "name": "coup_v0"}
 
     def __init__(self, render_mode=None, deck=Deck(3)):
         # need to make number of players dynamic
@@ -146,6 +146,7 @@ class CoupFourPlayers(ParallelEnv):
         self.deck = deck
         self.render_mode = render_mode
         self.rewards = {}
+        self.cumulative_rewards = {agent: 0 for agent in self.agents}
         self.turn_list = gen_turn_list()
         self.reward_msgs = []
         self.observation_spaces = {
@@ -287,6 +288,7 @@ class CoupFourPlayers(ParallelEnv):
         self.deck.reset()
         self.turn_list = gen_turn_list()
         self.rewards = {}
+        self.cumulative_rewards = {agent: 0 for agent in self.agents}
         self.state = {
             agent: {
                 "COINS": 0,
@@ -697,13 +699,16 @@ class CoupFourPlayers(ParallelEnv):
         players_left = [item[0] for item in dead.items() if item[1] == False]
         terminations = {agent: False for agent in self.agents}
         terminations["__all__"] = False
+        for agent in self.agents:
+            self.cumulative_rewards[agent] += self.rewards[agent]
 
-        if self.render_mode in ["human"]:
+        if self.render_mode in ["moves"]:
             self.render(turn)
 
         if env_truncation or len(players_left) == 1:
-            if self.render_mode in ["human"]:
+            if self.render_mode in ["moves", "games"]:
                 print(f"Game Over - {players_left[0]} wins!")
+                print("Cumulative rewards: ", self.cumulative_rewards)
             terminations["__all__"] = True
             truncations["__all__"] = True
             self.rewards[players_left[0]] += 30

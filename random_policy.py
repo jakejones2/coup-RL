@@ -14,7 +14,7 @@ def random_policy(observation):
 
 
 if __name__ == "__main__":
-    env = CoupFourPlayers(render_mode="human")
+    env = CoupFourPlayers(render_mode="moves")
     observations, infos = env.reset()
 
     while True:

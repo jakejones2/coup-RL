@@ -2,13 +2,11 @@ import ray
 from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.models import ModelCatalog
+from ray.rllib.utils.framework import try_import_tf
 from ray.tune.registry import register_env
 
-from custom_model import Model1
+from model import Model1
 from env.coup_env import CoupFourPlayers
-
-from ray.rllib.utils.framework import try_import_tf
-
 from random_policy import random_policy
 
 tf1, tf, tfv = try_import_tf()
