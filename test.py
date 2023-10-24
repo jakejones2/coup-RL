@@ -27,7 +27,7 @@ register_env("coup_env", lambda config: env)
 ray.init()
 
 PPOagent = PPO.from_checkpoint(
-    "/Users/jakejones/Documents/repos/git/petting-zoo/ray_results/coup_env/PPO/PPO_coup_env_f9312_00000_0_2023-10-23_19-42-52/checkpoint_000192"
+    "/Users/jakejones/Documents/repos/git/petting-zoo/ray_results/coup_env/PPO/PPO_coup_env_5b9db_00000_0_2023-10-23_09-30-01/checkpoint_000209"
     # policy checkpoint goes here
 )
 
@@ -38,13 +38,13 @@ def test_policy(player, iter, results):
         reward_sum = {agent: 0 for agent in raw_env.agents}
         while True:
             actions = {
-                "player_0": random_policy(observations["player_1"]),
+                "player_0": random_policy(observations["player_0"]),
                 "player_1": random_policy(observations["player_1"]),
                 "player_2": random_policy(observations["player_2"]),
                 "player_3": random_policy(observations["player_3"]),
             }
             actions[player] = PPOagent.compute_single_action(
-                observations[player], policy_id="main"
+                observations[player],  # policy_id="main"
             )
             observations, rewards, terminations, truncations, infos = env.step(actions)
             for agent, reward in rewards.items():
