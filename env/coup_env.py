@@ -8,14 +8,16 @@ AEC (turn-based) API.
 
 This is a work in progress. It's possible that the current reward and action-masking
 system isn't conducive to good learning with standard algorithms - the best policy I have
-achieved so far is only 17% better than average! The game is challenging though and has 
-a large element of chance, especially when playing against random choice opponents. 
+achieved so far is 30% better than average, winning the four-player game 55% of the time 
+(n=4000).
 
 Rewards could be simplified as proportional to coins and inversely proportional to the 
 number of players remaining, with perhaps a winning bonus. Environment could also be 
 modified to take a variable number of agents rather than just 4.
 
-See implementation in random_policy.py
+For a quick implementation, run the file random_policy.py. Environment render_mode parameter
+can be "moves" for a full breakdown or "games" for seeing summary. Anything else (e.g. "none") 
+will render nothing.
 """
 
 import functools
