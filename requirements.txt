@@ -73,6 +73,7 @@ tensorflow-estimator==2.14.0
 tensorflow-io-gcs-filesystem==0.34.0
 termcolor==2.3.0
 tifffile==2023.9.26
+tinyscaler==1.2.7
 typer==0.9.0
 typing_extensions==4.8.0
 tzdata==2023.3
