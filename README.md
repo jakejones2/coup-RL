@@ -4,10 +4,10 @@ Training a keras model to play the card game **[Coup](https://www.ultraboardgame
 
 ### Setup
 
-To see the environment in action, run `random_policy.py`. This plays the game with random decisions by each agent.
-To train policies, experiment with the ppo files or create your own algorithms. [See ray docs](https://docs.ray.io/en/latest/rllib/index.html) for info.
-To view a policy versus random actions, modify and run `watch.py`.
-To test a policy's performance versus random actions, modify and run `test.py`.
+- To see the environment in action, run `random_policy.py`. This plays the game with random decisions by each agent.
+- To train policies, experiment with the ppo files or create your own algorithms. [See ray docs](https://docs.ray.io/en/latest/rllib/index.html) for info.
+- To watch a trained policy play against random actions, modify and run `watch.py`.
+- To test a policy's performance against random actions, modify and run `test.py`.
 
 ### Environment - PettingZoo/Gymnasium
 
