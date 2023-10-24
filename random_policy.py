@@ -1,3 +1,10 @@
+"""
+Random policy chooses random actions after filtering out
+illegal moves using the action mask.
+
+Run this script to see a single game.
+"""
+
 from env.coup_env import CoupFourPlayers
 import random
 

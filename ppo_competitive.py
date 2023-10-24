@@ -72,7 +72,7 @@ if __name__ == "__main__":
             disable_env_checking=False,
             action_mask_key="action_mask",
         )  # clip_actions=True, render_env=True
-        .rollouts(num_rollout_workers=1, rollout_fragment_length=128)  # workers = 4
+        .rollouts(num_rollout_workers=4, rollout_fragment_length=128)  # workers = 4
         .multi_agent(
             policies={
                 "main": PolicySpec(),
@@ -104,7 +104,7 @@ if __name__ == "__main__":
     tune.run(
         "PPO",
         name="PPO",
-        stop={"timesteps_total": 1},  # 5000000
+        stop={"timesteps_total": 5000000},  # 5000000
         checkpoint_freq=10,
         local_dir="/Users/jakejones/Documents/repos/git/petting-zoo/ray_results/"
         + env_name,

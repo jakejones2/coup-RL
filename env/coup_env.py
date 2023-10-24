@@ -1,13 +1,30 @@
+"""
+PettingZoo (multiagent Gymnasium) reinforcement learning environment for the card 
+game 'Coup'. https://www.ultraboardgames.com/coup/game-rules.php
+
+This is a parallel environment. Import the class CoupFourPlayers directly, 
+or the env function which adds PettingZoo wrappers and the option to convert to the 
+AEC (turn-based) API.
+
+This is a work in progress. It's possible that the current reward and action-masking
+system isn't conducive to good learning with standard algorithms - the best policy I have
+achieved so far is only 17% better than average! The game is challenging though and has 
+a large element of chance, especially when playing against random choice opponents. 
+
+Rewards could be simplified as proportional to coins and inversely proportional to the 
+number of players remaining, with perhaps a winning bonus. Environment could also be 
+modified to take a variable number of agents rather than just 4.
+
+See implementation in random_policy.py
+"""
+
 import functools
 import random
-
+import math
 import numpy as np
-from gymnasium.spaces import Discrete, Box
-from gymnasium import spaces
-
+from gymnasium.spaces import Discrete, Box, Dict
 from pettingzoo import ParallelEnv
 from pettingzoo.utils import parallel_to_aec, wrappers
-
 
 MOVES = [
     "STEAL0",  # 0
@@ -48,66 +65,90 @@ CARDS = [
 ]
 
 TURNS = [
-    "player_0",
-    "counter-player_0",
-    "challenge-counter-player_0",
-    "discard-player_0",
-    "player_1",
-    "counter-player_1",
-    "challenge-counter-player_1",
-    "discard-player_1",
-    "player_2",
-    "counter-player_2",
-    "challenge-counter-player_2",
-    "discard-player_2",
-    "player_3",
-    "counter-player_3",
-    "challenge-counter-player_3",
-    "discard-player_3",
+    "player_0",  # 0
+    "counter-player_0",  # 1
+    "challenge-counter-player_0",  # 2
+    "discard-player_0",  # 3
+    "player_1",  # 4
+    "counter-player_1",  # 5
+    "challenge-counter-player_1",  # 6
+    "discard-player_1",  # 7
+    "player_2",  # 8
+    "counter-player_2",  # 9
+    "challenge-counter-player_2",  # 10
+    "discard-player_2",  # 11
+    "player_3",  # 12
+    "counter-player_3",  # 13
+    "challenge-counter-player_3",  # 14
+    "discard-player_3",  # 15
 ]
 
+# number of iterations before env truncation
 NUM_ITERS = 80
 
-leader_mask = np.pad(np.ones(4), (12, 10))
-three_coin_mask = np.pad(np.ones(8), (8, 10))
-seven_coin_mask = np.pad(np.ones(12), (4, 10))
-ten_card_mask = np.pad(np.ones(4), (4, 18))
-none_mask = np.append(np.zeros(25), [1])
-challenge_mask = np.append(np.pad(np.array([1]), (19, 5)), [1])
-counter_fe_mask = np.append(np.pad(np.array([1]), (16, 8)), [1])
-counter_stealing_mask = np.append(np.pad(np.array([1, 0, 1]), (17, 5)), [1])
-counter_assassin_mask = np.append(np.pad(np.array([1, 1]), (18, 5)), [1])
+# action mask templates, each must be an array of length 26 containing 1s and 0s.
+LEADER_MASK = np.pad(np.ones(4), (12, 10))
+THREE_COIN_MASK = np.pad(np.ones(8), (8, 10))
+SEVEN_COIN_MASK = np.pad(np.ones(12), (4, 10))
+TEN_CARD_MASK = np.pad(np.ones(4), (4, 18))
+NONE_MASK = np.append(np.zeros(25), [1])
+CHALLENGE_MASK = np.append(np.pad(np.array([1]), (19, 5)), [1])
+COUNTER_FE_MASK = np.append(np.pad(np.array([1]), (16, 8)), [1])
+COUNTER_STEALING_MASK = np.append(np.pad(np.array([1, 0, 1]), (17, 5)), [1])
+COUNTER_ASSASSINATION_MASK = np.append(np.pad(np.array([1, 1]), (18, 5)), [1])
 
 
 def gen_turn_list():
-    round = [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14]
-    rounds = []
-    for n in range(50):
-        rounds.extend(round)
-    return rounds
+    """
+    Generates a starting turn list for the environment. Indexes the "TURNS" variable
+    (see top of file).
+
+    For each turn within cycle:
+        If turn % 4 == 0, turn is of type primary move.
+        If turn % 4 == 1, turn is of type counter.
+        If turn % 4 == 2, turn is of type challenge-counter.
+        If turn % 4 == 3, turn is of type discard.
+
+    Each cycle thus follows the following formula:
+        player_0 (makes primary move, e.g foreign aid)
+        counter-player_0 (either challenges or blocks primary move)
+        challenge-counter-player_0 (challenges counter if applicable)
+        player_1
+        counter-player_1
+        etc.
+
+    Discard rounds are added into the turn list as needed by the step
+    function. The step function also skips rounds when not legal (e.g.
+    counter-player_N is skipped if action is not counterable, and
+    challenge-counter-player_N is skipped if there is no counter).
+    """
+    cycle = [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14]
+    turn_list = []
+    for n in range(math.ceil(NUM_ITERS / 4)):
+        turn_list.extend(cycle)
+    return turn_list
 
 
-def env(render_mode=None):
+def env(render_mode=None, convert_to_aec=False):
+    """
+    Use this function to add PettingZoo wrappers to env.
+    """
     internal_render_mode = render_mode if render_mode != "ansi" else "moves"
-    env = raw_env(render_mode=internal_render_mode)
+    env = CoupFourPlayers(render_mode=internal_render_mode)
+    if convert_to_aec:
+        env = parallel_to_aec(env)
     if render_mode == "ansi":
         env = wrappers.CaptureStdoutWrapper(env)
-    # env = wrappers.AssertOutOfBoundsWrapper(env)
-    # env = wrappers.OrderEnforcingWrapper(env)
-    return env
-
-
-def raw_env(render_mode=None):
-    """
-    To support the AEC API, the raw_env() function just uses the from_parallel
-    function to convert from a ParallelEnv to an AEC env
-    """
-    env = CoupFourPlayers(render_mode=render_mode)
-    # env = parallel_to_aec(env)
+    env = wrappers.AssertOutOfBoundsWrapper(env)
+    env = wrappers.OrderEnforcingWrapper(env)
     return env
 
 
 class Deck:
+    """
+    Class to model the deck of cards in play.
+    """
+
     def __init__(self, size=3):
         self.size = size
         self.deck = ["ASSASSIN", "AMBASSADOR", "DUKE", "CONTESSA", "CAPTAIN"] * size
@@ -135,13 +176,13 @@ class Deck:
 
 class CoupFourPlayers(ParallelEnv):
     """
-    Environment for the card game 'Coup'. See rules here: https://www.ultraboardgames.com/coup/game-rules.php
+    Four-player environment for the card game 'Coup'.
+    See rules here: https://www.ultraboardgames.com/coup/game-rules.php
     """
 
-    metadata = {"render_modes": ["moves"], "name": "coup_v0"}
+    metadata = {"render_modes": ["moves, games, ansi"], "name": "coup_v0"}
 
     def __init__(self, render_mode=None, deck=Deck(3)):
-        # need to make number of players dynamic
         self.agents = ["player_" + str(r) for r in range(4)]
         self.deck = deck
         self.render_mode = render_mode
@@ -150,31 +191,62 @@ class CoupFourPlayers(ParallelEnv):
         self.turn_list = gen_turn_list()
         self.reward_msgs = []
         self.observation_spaces = {
-            agent: spaces.Dict(
+            agent: Dict(
                 {
-                    "observations": spaces.Box(
-                        low=0, high=300, shape=(21,), dtype=np.float32
-                    ),
-                    "action_mask": spaces.Box(
-                        low=0, high=1, shape=(26,), dtype=np.float32
-                    ),
+                    "observations": Box(low=0, high=300, shape=(21,), dtype=np.float32),
+                    "action_mask": Box(low=0, high=1, shape=(26,), dtype=np.int8),
                 }
             )
             for agent in self.agents
         }
         self.action_spaces = {agent: Discrete(26) for agent in self.agents}
+        self.game_ended = False
 
-    # @functools.lru_cache(maxsize=None)
+    @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
+        """
+        Returns shape of the observations space for given agent.
+        """
         return self.observation_spaces[agent]
 
-    # @functools.lru_cache(maxsize=None)
+    @functools.lru_cache(maxsize=None)
     def action_space(self, agent):
+        """
+        Returns shape of the action space for given agent.
+        """
         return self.action_spaces[agent]
 
+    def reset(self, seed=None, options=None):
+        """
+        Resets environemnt state for a new game, and returns initial
+        observations and info.
+        """
+        self.game_ended = False
+        self.deck.reset()
+        self.turn_list = gen_turn_list()
+        self.rewards = {}
+        self.cumulative_rewards = {agent: 0 for agent in self.agents}
+        self.state = {
+            agent: {
+                "COINS": 0,
+                "MOVES": [25, 25, 25],
+                "CARDS": [self.deck.take(), self.deck.take(), "", ""],
+                "TURN": 0,
+            }
+            for agent in self.agents
+        }
+        observations = {agent: self.observe(agent) for agent in self.agents}
+        infos = {agent: {} for agent in self.agents}
+        return observations, infos
+
     def observe(self, agent):
+        """
+        Creates observation for given player.
+        Observation is a dict of 'action_mask' and 'observations'.
+        """
         next_turn = self.turn_list[self.state[agent]["TURN"]]
         coins = self.state[agent]["COINS"]
+        agent_num = int(agent[-1])
 
         # determine player data
         stealable = []
@@ -190,13 +262,13 @@ class CoupFourPlayers(ParallelEnv):
                 dead.append(int(pos_agent[-1]) + 4)
                 dead.append(int(pos_agent[-1]) + 8)
 
-        action_mask = none_mask
+        action_mask = NONE_MASK
         if (next_turn % 4 == 0) and (agent == TURNS[next_turn]):
-            action_mask = leader_mask
+            action_mask = LEADER_MASK
             if coins >= 3:
-                action_mask = three_coin_mask
+                action_mask = THREE_COIN_MASK
             if coins >= 7:
-                action_mask = seven_coin_mask
+                action_mask = SEVEN_COIN_MASK
             # can steal from those with coins
             for action in stealable:
                 action_mask[action] = 1
@@ -204,23 +276,26 @@ class CoupFourPlayers(ParallelEnv):
             for action in dead:
                 action_mask[action] = 0
             if coins >= 10:
-                action = ten_card_mask
+                action = TEN_CARD_MASK
         elif next_turn % 4 == 1:
             leader = TURNS[next_turn].split("-")[-1]
             last_leader_move = self.state[leader]["MOVES"][-1]
             if agent == leader:
                 pass
             elif last_leader_move == 13:
-                action_mask = counter_fe_mask
+                action_mask = COUNTER_FE_MASK
             elif last_leader_move < 4:
-                action_mask = counter_stealing_mask
+                action_mask = COUNTER_STEALING_MASK
             elif last_leader_move in [8, 9, 10, 11]:
-                action_mask = counter_assassin_mask
+                if last_leader_move % 4 == agent_num:
+                    action_mask = COUNTER_ASSASSINATION_MASK
+                else:
+                    action_mask = CHALLENGE_MASK
             elif last_leader_move in [14, 15]:
-                action_mask = challenge_mask
+                action_mask = CHALLENGE_MASK
         elif next_turn % 4 == 2:
             if self.state[agent]["MOVES"][-1] == 25 and not action in [25, 19]:
-                action_mask = challenge_mask
+                action_mask = CHALLENGE_MASK
         elif next_turn % 4 == 3:
             if agent == TURNS[next_turn].split("-")[-1]:
                 cards = self.state[agent]["CARDS"]
@@ -231,14 +306,13 @@ class CoupFourPlayers(ParallelEnv):
                 action_mask = np.array(zeros)
 
         # ensure cannot act against self
-        agent_num = int(agent[-1])
         action_mask[agent_num] = 0
         action_mask[agent_num + 4] = 0
         action_mask[agent_num + 8] = 0
 
         # ensure dead players cannot act
         if self.number_of_cards(agent) == 0:
-            action_mask = none_mask
+            action_mask = NONE_MASK
 
         return {
             "observations": np.array(
@@ -270,137 +344,21 @@ class CoupFourPlayers(ParallelEnv):
             "action_mask": action_mask.astype(np.int8),
         }
 
-    def render(self, last_turn):
-        string = f"\n----{TURNS[last_turn]}----\n"
-        for agent in self.agents:
-            string += "{}: {}, coins {}, cards {}, rewards {}, \n".format(
-                agent,
-                MOVES[self.state[agent]["MOVES"][-1]],
-                self.state[agent]["COINS"],
-                [card for card in self.state[agent]["CARDS"] if card],
-                self.rewards[agent],
-            )
-        if len(self.reward_msgs):
-            string += str(self.reward_msgs)
-        print(string)
-
-    def reset(self, seed=None, options=None):
-        self.deck.reset()
-        self.turn_list = gen_turn_list()
-        self.rewards = {}
-        self.cumulative_rewards = {agent: 0 for agent in self.agents}
-        self.state = {
-            agent: {
-                "COINS": 0,
-                "MOVES": [25, 25, 25],
-                "CARDS": [self.deck.take(), self.deck.take(), "", ""],
-                "TURN": 0,
-            }
-            for agent in self.agents
-        }
-        observations = {agent: self.observe(agent) for agent in self.agents}
-        infos = {agent: {} for agent in self.agents}
-        return observations, infos
-
-    def has_card(self, card, player):
-        """
-        Returns true if player holds card, else false
-        """
-        return card in self.state[player]["CARDS"][:-2]
-
-    def resolve_challenge(self, card, agent, target, steps):
-        """
-        Reward players if they pass/fail challenge
-        """
-        if self.has_card(card, target):
-            if card == "ASSASSIN":
-                self.state[agent]["CARDS"] = ["", "", "", ""]
-                self.rewards[agent] -= 10
-                self.reward_msgs.append(
-                    f"punish {agent} loses game for failed assasination challenge"
-                )
-                self.rewards[target] += 10
-            else:
-                self.rewards[target] += 5
-                self.rewards[agent] -= 5
-                self.reward_msgs.append(f"reward {target} win challenge")
-                self.reward_msgs.append(f"punish {agent} lose challenge")
-                discard_turn = TURNS.index(f"discard-{agent}")
-                self.turn_list.insert(steps, discard_turn)
-            # swap out revealed card
-            card_index = self.state[target]["CARDS"].index(card)
-            self.state[target]["CARDS"][card_index] = self.deck.take()
-            self.deck.add(card)
-            return False
-        else:
-            self.rewards[target] -= 5
-            self.rewards[agent] += 5
-            self.reward_msgs.append(f"reward {agent} win challenge")
-            self.reward_msgs.append(f"punish {target} lose challenge")
-            discard_turn = TURNS.index(f"discard-{target}")
-            self.turn_list.insert(steps, discard_turn)
-            return True
-
-    def remove_card(self, card, agent):
-        """
-        If agent doesn't hold card, punish 10.
-        If agent holds card, remove card from state.
-        """
-        if not card in self.state[agent]["CARDS"]:
-            self.rewards[agent] -= 10
-            self.reward_msgs.append(f"punish {agent} remove card not held")
-        else:
-            card_index = self.state[agent]["CARDS"].index(card)
-            self.state[agent]["CARDS"][card_index] = ""
-            self.deck.add(card)
-            self.state[agent]["CARDS"].sort(reverse=True)
-
-    def last_turn(self, player):
-        """
-        Return a player's last turn-based move, discounting counters, discards, challenges and None.
-        If no moves, return None.
-        """
-        moves = self.state[player]["MOVES"].copy().reverse()
-        if not moves:
-            return 25
-        for move in moves:
-            if move < 16:
-                return move
-        return 25
-
-    def last_move(self, player):
-        """
-        Return a player's last action, discounting None.
-        If no moves, return None.
-        """
-        moves = self.state[player]["MOVES"].copy().reverse()
-        if not moves:
-            return 25
-        for move in moves:
-            if move != 25:
-                return move
-        return 25
-
-    def number_of_cards(self, player):
-        """
-        Returns the number of cards a player has discounting None.
-        """
-        cards = self.state[player]["CARDS"]
-        count = 0
-        for card in cards:
-            if card:
-                count += 1
-        return count
-
-    def get_counters(self):
-        counters = []
-        for agent in self.agents:
-            last_move = self.state[agent]["MOVES"][-1]
-            if last_move in [16, 17, 18]:
-                counters.append({"agent": agent, "move": last_move})
-        return counters
-
     def step(self, actions):
+        """
+        This function handles game actions by updating environment state and allocating rewards.
+        Each step, every agent submits an action which indexes a move. Moves are listed as
+        MOVES at the top of the file, and include a 'None' move (25).
+
+        The game has a predetermined sequence of turns (self.turn_list). Each player has a corresponding
+        turn state (e.g. self.state["player_0"]["TURN"]) which indexes self.turn_list. Each player's
+        turn state is identical, and increments every step by a variable amount depending on play, thus
+        progressing through self.turn_list with the option to skip turns. The turn sequence (self.turn_list)
+        can also be modified, e.g. when an action results in a player needing to discard, a discard turn
+        is inserted into the sequence and implemented when the "TURN" state increments to this index.
+        The turn sequence (self.turn_list) itself indexes possible turns listed at the top of the
+        file in the variable "TURNS".
+        """
         observations = {}
         infos = {}
         self.reward_msgs = []
@@ -541,7 +499,7 @@ class CoupFourPlayers(ParallelEnv):
                             f"reward {victim} stolen coins returned"
                         )
                 case 18:  # BLOCK ASSASSINATION
-                    if not last_leader_move in [8, 9, 10, 11]:
+                    if last_leader_move != 8 + int(actor[-1]):
                         self.rewards[actor] -= 10
                         self.reward_msgs.append(
                             f"punish {actor} invalid block assassination"
@@ -559,12 +517,12 @@ class CoupFourPlayers(ParallelEnv):
                     if turn % 4 == 1:
                         challenged_move = last_leader_move
                         target = leader
-                        steps = turn_step + 2
+                        next_discard_step = turn_step + 2
                     else:
                         counters = self.get_counters()
-                        steps = turn_step + 1
+                        next_discard_step = turn_step + 1
                         if len(counters):
-                            counter = random.choice(self.get_counters())
+                            counter = random.choice(counters)
                             challenged_move = counter["move"]
                             target = counter["agent"]
                         else:
@@ -573,14 +531,16 @@ class CoupFourPlayers(ParallelEnv):
                     if challenged_move == 25:
                         pass
                     elif challenged_move in [14, 16]:
-                        fail = self.resolve_challenge("DUKE", actor, target, steps)
-                        if fail and challenged_move == 14:
+                        win_challenge = self.resolve_challenge(
+                            "DUKE", actor, target, next_discard_step
+                        )
+                        if win_challenge and challenged_move == 14:
                             self.state[target]["COINS"] -= 3
                             self.rewards[target] -= 3
                             self.reward_msgs.append(
                                 f"punish {target} loses former tax reward"
                             )
-                        if fail and challenged_move == 16:
+                        if win_challenge and challenged_move == 16:
                             self.state[leader]["COINS"] += 2
                             self.rewards[leader] += 2
                             self.rewards[target] -= 2
@@ -589,36 +549,35 @@ class CoupFourPlayers(ParallelEnv):
                                 f"punish {target} loses former block FE reward"
                             )
                     elif challenged_move in [8, 9, 10, 11]:
-                        fail = self.resolve_challenge("ASSASSIN", actor, target, steps)
-                        if fail:
-                            self.rewards[target] -= 5
-                            self.reward_msgs.append(
-                                f"punish {target} loses former assassination reward"
-                            )
-                        if not fail:
-                            self.turn_list.pop(turn_step + 2)
+                        win_challenge = self.resolve_challenge(
+                            "ASSASSIN", actor, target, next_discard_step
+                        )
+                        if win_challenge:
+                            self.turn_list.pop(
+                                turn_step + 3
+                            )  # after the challenge discard
                             self.rewards[victim] += 5
                             self.rewards[target] -= 5
                             self.reward_msgs.append(
                                 f"reward {victim} avoids assassination"
                             )
                             self.reward_msgs.append(
-                                f"punish {target} loses assassination reward"
+                                f"punish {target} loses former assassination reward"
                             )
-
                     elif challenged_move == 15:
-                        fail = self.resolve_challenge(
-                            "AMBASSADOR", actor, target, steps
+                        win_challenge = self.resolve_challenge(
+                            "AMBASSADOR", actor, target, next_discard_step
                         )
-                        if fail:
+                        if win_challenge:
                             self.state[target]["CARDS"][2] = ""
                             self.state[target]["CARDS"][3] = ""
-                            self.turn_list.pop(turn_step + 2)
-                            self.turn_list.pop(turn_step + 2)
-
+                            self.turn_list.pop(turn_step + 3)
+                            self.turn_list.pop(turn_step + 3)
                     elif challenged_move < 4:
-                        fail = self.resolve_challenge("CAPTAIN", actor, target, steps)
-                        if fail:
+                        win_challenge = self.resolve_challenge(
+                            "CAPTAIN", actor, target, next_discard_step
+                        )
+                        if win_challenge:
                             self.state[victim]["COINS"] += 2
                             self.state[target]["COINS"] -= 2
                             self.rewards[victim] += 2
@@ -630,15 +589,16 @@ class CoupFourPlayers(ParallelEnv):
                                 f"punish {target} loses former steal reward"
                             )
                     elif challenged_move == 17:
+                        win_challenge = False
                         if self.has_card("CAPTAIN", target):
-                            fail = self.resolve_challenge(
-                                "CAPTAIN", actor, target, steps
+                            win_challenge = self.resolve_challenge(
+                                "CAPTAIN", actor, target, next_discard_step
                             )
                         else:
-                            fail = self.resolve_challenge(
-                                "AMBASSADOR", actor, target, steps
+                            win_challenge = self.resolve_challenge(
+                                "AMBASSADOR", actor, target, next_discard_step
                             )
-                        if fail:
+                        if win_challenge:
                             self.state[leader]["COINS"] += 2
                             self.state[victim]["COINS"] -= 2
                             self.rewards[leader] += 2
@@ -650,8 +610,17 @@ class CoupFourPlayers(ParallelEnv):
                                 f"reward {leader} regains stolen coins"
                             )
                     elif challenged_move == 18:
-                        self.resolve_challenge("CONTESSA", actor, target, steps)
-                        # failure handled within resolution
+                        win_challenge = self.resolve_challenge(
+                            "CONTESSA", actor, target, next_discard_step
+                        )
+                        if win_challenge:
+                            # reinstate blocked assassination
+                            discard_turn = TURNS.index(f"discard-{victim}")
+                            self.turn_list.insert(next_discard_step, discard_turn)
+                            self.rewards[leader] += 5
+                            self.rewards[victim] -= 5
+                            self.reward_msgs.append(f"reward {actor} assassinate")
+                            self.reward_msgs.append(f"punish {target} assassinated")
                     else:
                         self.rewards[actor] -= 10
                         self.reward_msgs.append(
@@ -691,26 +660,145 @@ class CoupFourPlayers(ParallelEnv):
         infos = {agent: {} for agent in self.agents}
         env_truncation = new_step >= NUM_ITERS
         truncations = {agent: env_truncation for agent in self.agents}
-        truncations["__all__"] = False
+        truncations["__all__"] = env_truncation
         # seems that you cannot report one agent terminated with RLlib?
         # this is potentially the source of the single trajectory error
         # https://github.com/ray-project/ray/issues/10761
         dead = {agent: self.number_of_cards(agent) == 0 for agent in self.agents}
         players_left = [item[0] for item in dead.items() if item[1] == False]
-        terminations = {agent: False for agent in self.agents}
-        terminations["__all__"] = False
+        env_termination = len(players_left) == 1
+        terminations = {agent: env_termination for agent in self.agents}
+        terminations["__all__"] = env_termination
+
+        if env_truncation or env_termination:
+            self.rewards[players_left[0]] += 30
+            self.game_ended = True
+
         for agent in self.agents:
             self.cumulative_rewards[agent] += self.rewards[agent]
 
-        if self.render_mode in ["moves"]:
-            self.render(turn)
-
-        if env_truncation or len(players_left) == 1:
-            if self.render_mode in ["moves", "games"]:
-                print(f"Game Over - {players_left[0]} wins!")
-                print("Cumulative rewards: ", self.cumulative_rewards)
-            terminations["__all__"] = True
-            truncations["__all__"] = True
-            self.rewards[players_left[0]] += 30
+        self.render(turn, players_left)
 
         return observations, self.rewards, terminations, truncations, infos
+
+    def render(self, last_turn, players_left):
+        """
+        This function prints game data to the console after each step.
+        """
+        if not self.render_mode in ["moves", "games"]:
+            return
+        msg = ""
+        if self.render_mode in ["moves"]:
+            msg += f"----{TURNS[last_turn]}----\n"
+            for agent in self.agents:
+                msg += "{}: {}, coins {}, cards {}, rewards {} \n".format(
+                    agent,
+                    MOVES[self.state[agent]["MOVES"][-1]],
+                    self.state[agent]["COINS"],
+                    [card for card in self.state[agent]["CARDS"] if card],
+                    self.rewards[agent],
+                )
+            if len(self.reward_msgs):
+                msg += "--> " + str(self.reward_msgs) + "\n"
+        if self.game_ended and self.render_mode in ["moves", "games"]:
+            msg += f"\nGame Over - {players_left[0]} wins!\n"
+            msg += f"Cumulative rewards: {self.cumulative_rewards}\n"
+        print(msg)
+
+    # game utils
+
+    def has_card(self, card, player):
+        """
+        Returns true if player holds card, else false
+        """
+        return card in self.state[player]["CARDS"][:-2]
+
+    def resolve_challenge(self, card, agent, target, discard_turn_step):
+        """
+        Reward players if they pass/fail challenge.
+        Return True if challenge succeeds (target doesn't hold required card),
+        or False if challenge fails (target does hold required card).
+        """
+        if self.has_card(card, target):
+            self.rewards[target] += 5
+            self.rewards[agent] -= 5
+            self.reward_msgs.append(f"reward {target} win challenge")
+            self.reward_msgs.append(f"punish {agent} lose challenge")
+            discard_turn = TURNS.index(f"discard-{agent}")
+            self.turn_list.insert(discard_turn_step, discard_turn)
+            # swap out revealed card
+            card_index = self.state[target]["CARDS"].index(card)
+            self.state[target]["CARDS"][card_index] = self.deck.take()
+            self.deck.add(card)
+            return False
+        else:
+            self.rewards[target] -= 5
+            self.rewards[agent] += 5
+            self.reward_msgs.append(f"reward {agent} win challenge")
+            self.reward_msgs.append(f"punish {target} lose challenge")
+            discard_turn = TURNS.index(f"discard-{target}")
+            self.turn_list.insert(discard_turn_step, discard_turn)
+            return True
+
+    def remove_card(self, card, agent):
+        """
+        If agent doesn't hold card, punish 10.
+        If agent holds card, remove card from state.
+        """
+        if not card in self.state[agent]["CARDS"]:
+            self.rewards[agent] -= 10
+            self.reward_msgs.append(f"punish {agent} remove card not held")
+        else:
+            card_index = self.state[agent]["CARDS"].index(card)
+            self.state[agent]["CARDS"][card_index] = ""
+            self.deck.add(card)
+            self.state[agent]["CARDS"].sort(reverse=True)
+
+    def last_turn(self, player):
+        """
+        Return a player's last turn-based move, discounting counters, discards, challenges and None.
+        If no moves, return 'None' move (25).
+        """
+        moves = self.state[player]["MOVES"].copy().reverse()
+        if not moves:
+            return 25
+        for move in moves:
+            if move < 16:
+                return move
+        return 25
+
+    def last_move(self, player):
+        """
+        Return a player's last action, discounting 'None' move (25).
+        If no moves, return 'None' move (25).
+        """
+        moves = self.state[player]["MOVES"].copy().reverse()
+        if not moves:
+            return 25
+        for move in moves:
+            if move != 25:
+                return move
+        return 25
+
+    def number_of_cards(self, player):
+        """
+        Returns the number of cards a player has discounting empty slots ("").
+        """
+        cards = self.state[player]["CARDS"]
+        count = 0
+        for card in cards:
+            if card:
+                count += 1
+        return count
+
+    def get_counters(self):
+        """
+        Return a list of counter actions (e.g. block foreign aid) from
+        the last step. Each counter is a dictionary with keys "agent" and "move".
+        """
+        counters = []
+        for agent in self.agents:
+            last_move = self.state[agent]["MOVES"][-1]
+            if last_move in [16, 17, 18]:
+                counters.append({"agent": agent, "move": last_move})
+        return counters

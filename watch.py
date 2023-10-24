@@ -1,3 +1,8 @@
+"""
+Script for watching trained policies play against a random policy.
+Plays one game.
+"""
+
 import ray
 from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
@@ -14,7 +19,7 @@ tf1.enable_eager_execution()
 
 ModelCatalog.register_custom_model("Model1", Model1)
 
-raw_env = CoupFourPlayers(render_mode="human")
+raw_env = CoupFourPlayers(render_mode="moves")
 env = ParallelPettingZooEnv(raw_env)
 env._agent_ids = set(raw_env.agents)
 register_env("coup_env", lambda config: env)
@@ -22,27 +27,24 @@ register_env("coup_env", lambda config: env)
 ray.init()
 
 PPOagent = PPO.from_checkpoint(
-    "/Users/jakejones/Documents/repos/git/petting-zoo/ray_results/coup_env/PPO/PPO_coup_env_5b9db_00000_0_2023-10-23_09-30-01/checkpoint_000209"
+    "/Users/jakejones/Documents/repos/git/petting-zoo/ray_results/coup_env/PPO/PPO_coup_env_f9312_00000_0_2023-10-23_19-42-52/checkpoint_000192"
+    # policy checkpoint goes here
 )
 
 observations, infos = env.reset()
-rewards_sum = {agent: 0 for agent in env._agent_ids}
 
 while True:
     actions = {
-        "player_0": PPOagent.compute_single_action(observations["player_0"]),
+        "player_0": PPOagent.compute_single_action(
+            observations["player_0"], policy_id="main"
+        ),
         "player_1": random_policy(observations["player_1"]),
         "player_2": random_policy(observations["player_2"]),
         "player_3": random_policy(observations["player_3"]),
     }
     observations, rewards, terminations, truncations, infos = env.step(actions)
-    for agent, reward in rewards.items():
-        rewards_sum[agent] += reward
     if terminations["__all__"] or truncations["__all__"]:
         break
 env.close()
-
-print("Total Rewards: ", rewards_sum)
-
 
 # RAY_DEDUP_LOGS=0 py watch.py
